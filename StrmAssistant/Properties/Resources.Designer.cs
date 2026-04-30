@@ -70,6 +70,33 @@ namespace StrmAssistant.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Language.
+        /// </summary>
+        public static string AboutOptions_DefaultUICulture_Language {
+            get {
+                return ResourceManager.GetString("AboutOptions_DefaultUICulture_Language", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to plugin UI language description.
+        /// </summary>
+        public static string AboutOptions_DefaultUICulture_Description {
+            get {
+                return ResourceManager.GetString("AboutOptions_DefaultUICulture_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Auto.
+        /// </summary>
+        public static string AboutOptions_DefaultUICulture_Auto {
+            get {
+                return ResourceManager.GetString("AboutOptions_DefaultUICulture_Auto", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Are you sure you wish to continue?.
         /// </summary>
         public static string AreYouSureToContinue {
@@ -1372,6 +1399,69 @@ namespace StrmAssistant.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Search Tuning Preferences.
+        /// </summary>
+        public static string ModOptions_SearchTuningPreferences_Search_Tuning_Preferences {
+            get {
+                return ResourceManager.GetString("ModOptions_SearchTuningPreferences_Search_Tuning_Preferences", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Search tuning preferences. Default is none..
+        /// </summary>
+        public static string ModOptions_SearchTuningPreferences_Search_tuning_preferences__Default_is_none_ {
+            get {
+                return ResourceManager.GetString("ModOptions_SearchTuningPreferences_Search_tuning_preferences__Default_is_none_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Exclude Original Title.
+        /// </summary>
+        public static string SearchTuningOption_ExcludeOriginalTitle_ExcludeOriginalTitle {
+            get {
+                return ResourceManager.GetString("SearchTuningOption_ExcludeOriginalTitle_ExcludeOriginalTitle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Traditional to Simplified Chinese.
+        /// </summary>
+        public static string SearchTuningOption_TraditionalToSimplifiedChinese_TraditionalToSimplifiedChinese {
+            get {
+                return ResourceManager.GetString("SearchTuningOption_TraditionalToSimplifiedChinese_TraditionalToSimplifiedChinese", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Suppress Search Suggestions.
+        /// </summary>
+        public static string SearchTuningOption_SuppressSearchSuggestions_SuppressSearchSuggestions {
+            get {
+                return ResourceManager.GetString("SearchTuningOption_SuppressSearchSuggestions_SuppressSearchSuggestions", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Digits as TMDB ID.
+        /// </summary>
+        public static string SearchTuningOption_DigitsAsTmdbId_DigitsAsTmdbId {
+            get {
+                return ResourceManager.GetString("SearchTuningOption_DigitsAsTmdbId_DigitsAsTmdbId", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Skip Startup FTS Rebuild.
+        /// </summary>
+        public static string SearchTuningOption_SkipStartupFtsRebuild_SkipStartupFtsRebuild {
+            get {
+                return ResourceManager.GetString("SearchTuningOption_SkipStartupFtsRebuild_SkipStartupFtsRebuild", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Exclusive MediaInfo Extract.
         /// </summary>
         public static string ModOptions_ExclusiveExtract_Exclusive_Extract {
@@ -2054,6 +2144,42 @@ namespace StrmAssistant.Properties {
         public static string Wiki_Link {
             get {
                 return ResourceManager.GetString("Wiki_Link", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Enable Periodic Memory Cleanup.
+        /// </summary>
+        public static string GeneralOptions_EnableMemoryCleanup_Title {
+            get {
+                return ResourceManager.GetString("GeneralOptions_EnableMemoryCleanup_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Periodically force a full GC and (on Windows) trim the process working set to prevent Emby&apos;s memory from growing unboundedly. Default is True.
+        /// </summary>
+        public static string GeneralOptions_EnableMemoryCleanup_Description {
+            get {
+                return ResourceManager.GetString("GeneralOptions_EnableMemoryCleanup_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Memory Cleanup Interval (Minutes).
+        /// </summary>
+        public static string GeneralOptions_MemoryCleanupInterval_Title {
+            get {
+                return ResourceManager.GetString("GeneralOptions_MemoryCleanupInterval_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Memory cleanup interval. Must be between 1 and 120. Default is 5.
+        /// </summary>
+        public static string GeneralOptions_MemoryCleanupInterval_Description {
+            get {
+                return ResourceManager.GetString("GeneralOptions_MemoryCleanupInterval_Description", resourceCulture);
             }
         }
     }

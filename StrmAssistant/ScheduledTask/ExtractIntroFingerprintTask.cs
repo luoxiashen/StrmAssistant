@@ -68,7 +68,8 @@ namespace StrmAssistant.ScheduledTask
             _logger.Info($"IntroFingerprintExtract - Number of seasons: {totalSeasons}");
             _logger.Info($"IntroFingerprintExtract - Number of episodes: {totalEpisodes}");
 
-            if (totalEpisodes > 0) IsRunning = true;
+            var hasEpisodes = totalEpisodes > 0;
+            if (hasEpisodes) IsRunning = true;
 
             var directoryService = new DirectoryService(_logger, _fileSystem);
 
@@ -82,35 +83,34 @@ namespace StrmAssistant.ScheduledTask
             var seasonWeight = !mediaInfoRestoreMode ? 0.2 : 0.0;
             var seasonProgressMap = new ConcurrentDictionary<Season, double>();
 
+            try
+            {
             foreach (var season in groupedBySeason)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    _logger.Info("IntroFingerprintExtract - Scheduled Task Cancelled");
-                    return;
-                }
+                if (cancellationToken.IsCancellationRequested) break;
 
                 var episodeTasks = new List<Task>();
                 var seasonSkip = mediaInfoRestoreMode;
 
                 foreach (var episode in season)
                 {
+                    if (cancellationToken.IsCancellationRequested) break;
+
                     var taskEpisode = episode;
 
                     try
                     {
                         await QueueManager.MasterSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                     }
-                    catch
+                    catch (OperationCanceledException)
                     {
-                        return;
+                        break;
                     }
 
                     if (cancellationToken.IsCancellationRequested)
                     {
                         QueueManager.MasterSemaphore.Release();
-                        _logger.Info("IntroFingerprintExtract - Scheduled Task Cancelled");
-                        return;
+                        break;
                     }
 
                     var taskEpisodeIndex = ++episodeIndex;
@@ -213,12 +213,23 @@ namespace StrmAssistant.ScheduledTask
                         }
                     }, cancellationToken);
                     episodeTasks.Add(task);
+
+                    if (episodeTasks.Count >= 100)
+                    {
+                        episodeTasks.RemoveAll(t => t.IsCompleted);
+                    }
                 }
 
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    _logger.Info("IntroFingerprintExtract - Scheduled Task Cancelled");
-                    return;
+                    // 等待该 season 内已经投递的 episode tasks 收尾后退出 season 循环
+                    try { await Task.WhenAll(episodeTasks).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        _logger.Debug("IntroFingerprintExtract - Drain episode tasks: " + ex.Message);
+                    }
+                    break;
                 }
 
                 var taskSeason = season.Key;
@@ -254,7 +265,7 @@ namespace StrmAssistant.ScheduledTask
                     {
                         await QueueManager.Tier2Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                     }
-                    catch
+                    catch (OperationCanceledException)
                     {
                         return;
                     }
@@ -262,7 +273,6 @@ namespace StrmAssistant.ScheduledTask
                     if (cancellationToken.IsCancellationRequested)
                     {
                         QueueManager.Tier2Semaphore.Release();
-                        _logger.Info("IntroFingerprintExtract - Scheduled Task Cancelled");
                         return;
                     }
 
@@ -299,16 +309,43 @@ namespace StrmAssistant.ScheduledTask
                     }
                 }, cancellationToken);
                 seasonTasks.Add(seasonTask);
+
+                if (seasonTasks.Count >= 50)
+                {
+                    seasonTasks.RemoveAll(t => t.IsCompleted);
+                }
             }
 
-            await Task.WhenAll(seasonTasks).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(seasonTasks).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { /* expected on cancel */ }
+            catch (Exception ex)
+            {
+                _logger.Debug("IntroFingerprintExtract - Drain season tasks: " + ex.Message);
+            }
 
-            if (episodes.Count > 0) IsRunning = false;
-
-            progress.Report(100.0);
-            _logger.Info($"IntroFingerprintExtract - Number of seasons skipped: {seasonSkipCount}");
-            _logger.Info($"IntroFingerprintExtract - Number of episodes skipped: {episodeSkipCount}");
-            _logger.Info("IntroFingerprintExtract - Scheduled Task Complete");
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger.Info("IntroFingerprintExtract - Scheduled Task Cancelled");
+            }
+            else
+            {
+                progress.Report(100.0);
+                _logger.Info($"IntroFingerprintExtract - Number of seasons skipped: {seasonSkipCount}");
+                _logger.Info($"IntroFingerprintExtract - Number of episodes skipped: {episodeSkipCount}");
+                _logger.Info("IntroFingerprintExtract - Scheduled Task Complete");
+            }
+            }
+            finally
+            {
+                seasonTasks.Clear();
+                groupedBySeason.Clear();
+                episodes.Clear();
+                seasonProgressMap.Clear();
+                if (hasEpisodes) IsRunning = false;
+            }
         }
 
         public string Category => Resources.ResourceManager.GetString("PluginOptions_EditorTitle_Strm_Assistant",

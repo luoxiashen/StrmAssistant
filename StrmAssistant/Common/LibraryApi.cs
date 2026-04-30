@@ -47,21 +47,19 @@ namespace StrmAssistant.Common
             ExtraType.Trailer
         };
 
+        private static readonly object _excludeMediaCacheLock = new object();
+        private static string _lastExcludeMediaContainerSetting;
+        private static MediaContainers[] _cachedExcludeMediaContainers;
+        private static string[] _cachedExcludeMediaExtensions;
+
         public static MediaContainers[] ExcludeMediaContainers
         {
             get
             {
-                return Plugin.Instance.MediaInfoExtractStore.GetOptions().ImageCaptureExcludeMediaContainers
-                    .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(c =>
-                        Enum.TryParse<MediaContainers>(c.Trim(), true, out var container)
-                            ? container
-                            : (MediaContainers?)null)
-                    .Where(container => container.HasValue)
-                    .Select(container => container.Value)
-                    .Concat(new[] { MediaContainers.Iso })
-                    .Distinct()
-                    .ToArray();
+                var currentSetting = Plugin.Instance.MediaInfoExtractStore.GetOptions().ImageCaptureExcludeMediaContainers;
+                if (currentSetting != _lastExcludeMediaContainerSetting)
+                    RefreshExcludeMediaCache(currentSetting);
+                return _cachedExcludeMediaContainers;
             }
         }
 
@@ -69,8 +67,32 @@ namespace StrmAssistant.Common
         {
             get
             {
-                return Plugin.Instance.MediaInfoExtractStore.GetOptions()
-                    .ImageCaptureExcludeMediaContainers.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                var currentSetting = Plugin.Instance.MediaInfoExtractStore.GetOptions().ImageCaptureExcludeMediaContainers;
+                if (currentSetting != _lastExcludeMediaContainerSetting)
+                    RefreshExcludeMediaCache(currentSetting);
+                return _cachedExcludeMediaExtensions;
+            }
+        }
+
+        private static void RefreshExcludeMediaCache(string setting)
+        {
+            lock (_excludeMediaCacheLock)
+            {
+                if (setting == _lastExcludeMediaContainerSetting) return;
+
+                var parts = setting.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+
+                _cachedExcludeMediaContainers = parts
+                    .Select(c => Enum.TryParse<MediaContainers>(c.Trim(), true, out var container)
+                        ? container
+                        : (MediaContainers?)null)
+                    .Where(c => c.HasValue)
+                    .Select(c => c.Value)
+                    .Concat(new[] { MediaContainers.Iso })
+                    .Distinct()
+                    .ToArray();
+
+                _cachedExcludeMediaExtensions = parts
                     .SelectMany(c =>
                     {
                         if (Enum.TryParse<MediaContainers>(c.Trim(), true, out var container))
@@ -78,13 +100,14 @@ namespace StrmAssistant.Common
                             var aliases = container.GetAliases();
                             return aliases?.Where(a => !string.IsNullOrWhiteSpace(a)) ?? Array.Empty<string>();
                         }
-
                         return Array.Empty<string>();
                     })
                     .Concat(MediaContainers.Iso.GetAliases())
-                    .Where(alias => !string.IsNullOrWhiteSpace(alias))
+                    .Where(a => !string.IsNullOrWhiteSpace(a))
                     .Distinct()
                     .ToArray();
+
+                _lastExcludeMediaContainerSetting = setting;
             }
         }
 
@@ -150,6 +173,7 @@ namespace StrmAssistant.Common
             };
             var allUsers = _userManager.GetUserList(userQuery);
 
+            AllUsers.Clear();
             foreach (var user in allUsers)
             {
                 AllUsers[user] = _userManager.GetUserById(user.InternalId).Policy.IsAdministrator;
@@ -1219,6 +1243,8 @@ namespace StrmAssistant.Common
             await _providerManager
                 .RefreshSingleItem(taskItem, refreshOptions, collectionFolders, dummyLibraryOptions,
                     cancellationToken).ConfigureAwait(false);
+
+            EnhanceChineseSearch.EnqueueFtsRefresh(taskItem.InternalId);
         }
 
         private bool EpisodeNeedsRefresh(Episode item, DateTimeOffset lookBackTime,

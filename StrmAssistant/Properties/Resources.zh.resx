@@ -506,6 +506,27 @@
   <data name="ModOptions_ExcludeOriginalTitle_Exclude_original_title_from_search__Default_is_OFF_" xml:space="preserve">
     <value>排除原语言标题搜索，默认关闭。</value>
   </data>
+  <data name="ModOptions_SearchTuningPreferences_Search_Tuning_Preferences" xml:space="preserve">
+    <value>搜索调优偏好</value>
+  </data>
+  <data name="ModOptions_SearchTuningPreferences_Search_tuning_preferences__Default_is_none_" xml:space="preserve">
+    <value>搜索调优偏好设置，默认为无。</value>
+  </data>
+  <data name="SearchTuningOption_ExcludeOriginalTitle_ExcludeOriginalTitle" xml:space="preserve">
+    <value>排除原语言标题</value>
+  </data>
+  <data name="SearchTuningOption_TraditionalToSimplifiedChinese_TraditionalToSimplifiedChinese" xml:space="preserve">
+    <value>繁体转简体中文</value>
+  </data>
+  <data name="SearchTuningOption_SuppressSearchSuggestions_SuppressSearchSuggestions" xml:space="preserve">
+    <value>禁用搜索建议</value>
+  </data>
+  <data name="SearchTuningOption_DigitsAsTmdbId_DigitsAsTmdbId" xml:space="preserve">
+    <value>纯数字作为TMDB ID</value>
+  </data>
+  <data name="SearchTuningOption_SkipStartupFtsRebuild_SkipStartupFtsRebuild" xml:space="preserve">
+    <value>启动时跳过分词索引重建</value>
+  </data>
   <data name="IntroSkipPreference_NoDetectionButReset_NoDetectionButReset" xml:space="preserve">
     <value>无自动探测仅暂停操作设置片头片尾标记</value>
   </data>
@@ -661,5 +682,26 @@
   </data>
   <data name="ExclusiveControl_NoNfoSaverOptimization_No_Nfo_Saver_Optimization" xml:space="preserve">
     <value>无NFO保存优化</value>
+  </data>
+  <data name="GeneralOptions_EnableMemoryCleanup_Title" xml:space="preserve">
+    <value>启用定期内存清理</value>
+  </data>
+  <data name="GeneralOptions_EnableMemoryCleanup_Description" xml:space="preserve">
+    <value>定期强制完整 GC，并在 Windows 上归还进程工作集，防止 Emby 内存持续增长。默认开启。</value>
+  </data>
+  <data name="GeneralOptions_MemoryCleanupInterval_Title" xml:space="preserve">
+    <value>内存清理间隔（分钟）</value>
+  </data>
+  <data name="GeneralOptions_MemoryCleanupInterval_Description" xml:space="preserve">
+    <value>内存清理间隔，必须在 1 至 120 之间，默认为 5。</value>
+  </data>
+  <data name="AboutOptions_DefaultUICulture_Language" xml:space="preserve">
+    <value>语言</value>
+  </data>
+  <data name="AboutOptions_DefaultUICulture_Description" xml:space="preserve">
+    <value>插件界面语言。选择"自动"将跟随系统语言，选择具体语言则强制使用该语言。默认为自动。</value>
+  </data>
+  <data name="AboutOptions_DefaultUICulture_Auto" xml:space="preserve">
+    <value>自动</value>
   </data>
 </root>

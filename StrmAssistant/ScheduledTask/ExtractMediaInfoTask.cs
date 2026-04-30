@@ -36,8 +36,9 @@ namespace StrmAssistant.ScheduledTask
             _logger.Info("Intro Skip Enabled: " + enableIntroSkip);
 
             var items = Plugin.LibraryApi.FetchPreExtractTaskItems();
+            var hasItems = items.Count > 0;
 
-            if (items.Count > 0) IsRunning = true;
+            if (hasItems) IsRunning = true;
 
             double total = items.Count;
             var index = 0;
@@ -46,106 +47,136 @@ namespace StrmAssistant.ScheduledTask
 
             var tasks = new List<Task>();
 
-            foreach (var item in items)
+            try
             {
+                foreach (var item in items)
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    try
+                    {
+                        await QueueManager.MasterSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        QueueManager.MasterSemaphore.Release();
+                        break;
+                    }
+
+                    var taskIndex = ++index;
+                    var taskItem = item;
+                    var task = Task.Run(async () =>
+                    {
+                        bool? result = null;
+
+                        try
+                        {
+                            if (cancellationToken.IsCancellationRequested)
+                            {
+                                return;
+                            }
+
+                            result = await Plugin.LibraryApi
+                                .OrchestrateMediaInfoProcessAsync(taskItem, "MediaInfoExtract Task", cancellationToken)
+                                .ConfigureAwait(false);
+
+                            if (result is null)
+                            {
+                                if (!mediaInfoRestoreMode)
+                                {
+                                    _logger.Info(
+                                        $"MediaInfoExtract - Item skipped or non-existent: {taskItem.Name} - {taskItem.Path}");
+                                }
+
+                                Interlocked.Increment(ref skip);
+                                return;
+                            }
+
+                            if (enableIntroSkip && taskItem is Episode episode &&
+                                Plugin.PlaySessionMonitor.IsLibraryInScope(episode) &&
+                                Plugin.ChapterApi.SeasonHasIntroCredits(episode))
+                            {
+                                QueueManager.IntroSkipItemQueue.Enqueue(episode);
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            _logger.Info($"MediaInfoExtract - Item cancelled: {taskItem.Name} - {taskItem.Path}");
+                        }
+                        catch (Exception e)
+                        {
+                            _logger.Error($"MediaInfoExtract - Item failed: {taskItem.Name} - {taskItem.Path}");
+                            _logger.Error(e.Message);
+                            _logger.Debug(e.StackTrace);
+                        }
+                        finally
+                        {
+                            if (result is true && cooldownSeconds.HasValue)
+                            {
+                                try
+                                {
+                                    await Task.Delay(cooldownSeconds.Value * 1000, cancellationToken).ConfigureAwait(false);
+                                }
+                                catch
+                                {
+                                    // ignored
+                                }
+                            }
+
+                            QueueManager.MasterSemaphore.Release();
+
+                            var currentCount = Interlocked.Increment(ref current);
+                            progress.Report(currentCount / total * 100);
+
+                            if (!mediaInfoRestoreMode)
+                            {
+                                _logger.Info(
+                                    $"MediaInfoExtract - Progress {currentCount}/{total} - Task {taskIndex}: {taskItem.Path}");
+                            }
+                        }
+                    }, cancellationToken);
+                    tasks.Add(task);
+
+                    // 周期性剔除已完成 task，释放它们捕获的 BaseItem 闭包
+                    if (tasks.Count >= 100)
+                    {
+                        tasks.RemoveAll(t => t.IsCompleted);
+                    }
+                }
+
+                // 不论成功还是取消，都要 await 已投递的任务收尾，防止 Task 闭包持有 BaseItem 引用
                 try
                 {
-                    await QueueManager.MasterSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
                 }
-                catch
+                catch (OperationCanceledException) { /* expected on cancel */ }
+                catch (Exception ex)
                 {
-                    return;
+                    _logger.Debug("MediaInfoExtract - Drain pending tasks: " + ex.Message);
                 }
 
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    QueueManager.MasterSemaphore.Release();
                     _logger.Info("MediaInfoExtract - Scheduled Task Cancelled");
-                    return;
                 }
-
-                var taskIndex = ++index;
-                var taskItem = item;
-                var task = Task.Run(async () =>
+                else
                 {
-                    bool? result = null;
-
-                    try
-                    {
-                        if (cancellationToken.IsCancellationRequested)
-                        {
-                            _logger.Info("MediaInfoExtract - Scheduled Task Cancelled");
-                            return;
-                        }
-
-                        result = await Plugin.LibraryApi
-                            .OrchestrateMediaInfoProcessAsync(taskItem, "MediaInfoExtract Task", cancellationToken)
-                            .ConfigureAwait(false);
-
-                        if (result is null)
-                        {
-                            if (!mediaInfoRestoreMode)
-                            {
-                                _logger.Info(
-                                    $"MediaInfoExtract - Item skipped or non-existent: {taskItem.Name} - {taskItem.Path}");
-                            }
-
-                            Interlocked.Increment(ref skip);
-                            return;
-                        }
-
-                        if (enableIntroSkip && taskItem is Episode episode &&
-                            Plugin.PlaySessionMonitor.IsLibraryInScope(episode) &&
-                            Plugin.ChapterApi.SeasonHasIntroCredits(episode))
-                        {
-                            QueueManager.IntroSkipItemQueue.Enqueue(episode);
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        _logger.Info($"MediaInfoExtract - Item cancelled: {taskItem.Name} - {taskItem.Path}");
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.Error($"MediaInfoExtract - Item failed: {taskItem.Name} - {taskItem.Path}");
-                        _logger.Error(e.Message);
-                        _logger.Debug(e.StackTrace);
-                    }
-                    finally
-                    {
-                        if (result is true && cooldownSeconds.HasValue)
-                        {
-                            try
-                            {
-                                await Task.Delay(cooldownSeconds.Value * 1000, cancellationToken).ConfigureAwait(false);
-                            }
-                            catch
-                            {
-                                // ignored
-                            }
-                        }
-
-                        QueueManager.MasterSemaphore.Release();
-
-                        var currentCount = Interlocked.Increment(ref current);
-                        progress.Report(currentCount / total * 100);
-
-                        if (!mediaInfoRestoreMode)
-                        {
-                            _logger.Info(
-                                $"MediaInfoExtract - Progress {currentCount}/{total} - Task {taskIndex}: {taskItem.Path}");
-                        }
-                    }
-                }, cancellationToken);
-                tasks.Add(task);
+                    progress.Report(100.0);
+                    _logger.Info($"MediaInfoExtract - Number of items skipped: {skip}");
+                    _logger.Info("MediaInfoExtract - Scheduled Task Complete");
+                }
             }
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            if (items.Count > 0) IsRunning = false;
-
-            progress.Report(100.0);
-            _logger.Info($"MediaInfoExtract - Number of items skipped: {skip}");
-            _logger.Info("MediaInfoExtract - Scheduled Task Complete");
+            finally
+            {
+                tasks.Clear();
+                items.Clear();
+                if (hasItems) IsRunning = false;
+            }
         }
 
         public string Category =>

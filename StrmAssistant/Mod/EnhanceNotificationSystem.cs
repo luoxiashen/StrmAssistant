@@ -43,30 +43,30 @@ namespace StrmAssistant.Mod
         protected override void OnInitialize()
         {
             var notificationsAssembly = Assembly.Load("Emby.Notifications");
-            var notificationManager = notificationsAssembly.GetType("Emby.Notifications.NotificationManager");
-            _convertToGroups = notificationManager.GetMethod("ConvertToGroups",
+            var notificationManager = notificationsAssembly?.GetType("Emby.Notifications.NotificationManager");
+            _convertToGroups = notificationManager?.GetMethod("ConvertToGroups",
                 BindingFlags.Instance | BindingFlags.NonPublic);
-            _sendNotification = notificationManager.GetMethod("SendNotification",
+            _sendNotification = notificationManager?.GetMethod("SendNotification",
                 BindingFlags.NonPublic | BindingFlags.Instance, null,
                 new[] { typeof(INotifier), typeof(NotificationInfo[]), typeof(NotificationRequest), typeof(bool) },
                 null);
-            var notificationQueueManager = notificationsAssembly.GetType("Emby.Notifications.NotificationQueueManager");
-            _queueNotification = notificationQueueManager.GetMethod("QueueNotification",
+            var notificationQueueManager = notificationsAssembly?.GetType("Emby.Notifications.NotificationQueueManager");
+            _queueNotification = notificationQueueManager?.GetMethod("QueueNotification",
                 BindingFlags.Instance | BindingFlags.Public, null,
                 new[] { typeof(INotifier), typeof(InternalNotificationRequest), typeof(int) }, null);
 
             var embyApi = Assembly.Load("Emby.Api");
-            var libraryService = embyApi.GetType("Emby.Api.Library.LibraryService");
+            var libraryService = embyApi?.GetType("Emby.Api.Library.LibraryService");
             _deleteItemsRequest =
-                libraryService.GetMethod("Any", new[] { embyApi.GetType("Emby.Api.Library.DeleteItems") });
+                libraryService?.GetMethod("Any", new[] { embyApi?.GetType("Emby.Api.Library.DeleteItems") });
             _getUserForRequest = typeof(BaseApiService).GetMethod("GetUserForRequest",
                 BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { typeof(string), typeof(bool) }, null);
             ReversePatch(PatchTracker, _getUserForRequest, nameof(GetUserForRequestStub));
 
             var embyServerImplementationsAssembly = Assembly.Load("Emby.Server.Implementations");
             var libraryManager =
-                embyServerImplementationsAssembly.GetType("Emby.Server.Implementations.Library.LibraryManager");
-            _deleteItem = libraryManager.GetMethod("DeleteItem",
+                embyServerImplementationsAssembly?.GetType("Emby.Server.Implementations.Library.LibraryManager");
+            _deleteItem = libraryManager?.GetMethod("DeleteItem",
                 BindingFlags.Instance | BindingFlags.Public, null,
                 new[] { typeof(BaseItem), typeof(DeleteOptions), typeof(BaseItem), typeof(bool) }, null);
         }

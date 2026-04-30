@@ -16,6 +16,8 @@ namespace StrmAssistant.Web.Helper
         {
             try
             {
+                // 释放旧的 MemoryStream，防止内存泄漏
+                StrmAssistantJs?.Dispose();
                 StrmAssistantJs = GetResourceStream("strmassistant.js");
                 ModifyShortcutMenu(configurationManager);
             }
@@ -34,6 +36,13 @@ namespace StrmAssistant.Web.Helper
             var destination = new MemoryStream((int) manifestResourceStream.Length);
             manifestResourceStream.CopyTo((Stream) destination);
             return destination;
+        }
+
+        public static void Dispose()
+        {
+            StrmAssistantJs?.Dispose();
+            StrmAssistantJs = null;
+            ModifiedShortcutsString = null;
         }
 
         private static void ModifyShortcutMenu(IServerConfigurationManager configurationManager)

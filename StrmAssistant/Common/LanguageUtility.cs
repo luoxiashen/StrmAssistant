@@ -66,6 +66,25 @@ namespace StrmAssistant.Common
             return PinyinHelper.GetPinyinInitials(input);
         }
 
+        /// <summary>
+        /// 转中文为全拼，按字符分隔。如 "蜜语纪" -> "MI YU JI" (separator=' ')；
+        /// 非中文字符忽略。返回大写形式（调用方按需 ToLowerInvariant）。
+        /// </summary>
+        public static string ConvertToPinyinFull(string input, char separator = ' ')
+        {
+            if (string.IsNullOrEmpty(input)) return string.Empty;
+            var sb = new System.Text.StringBuilder(input.Length * 4);
+            foreach (var c in input)
+            {
+                if (PinyinHelper.IsChinese(c))
+                {
+                    if (sb.Length > 0) sb.Append(separator);
+                    sb.Append(PinyinHelper.GetPinyin(c));
+                }
+            }
+            return sb.ToString();
+        }
+
         public static string RemoveDefaultCollectionName(string input)
         {
             return string.IsNullOrEmpty(input) ? input : DefaultChineseCollectionNameRegex.Replace(input, "").Trim();

@@ -3,6 +3,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
+using StrmAssistant.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -33,8 +34,13 @@ namespace StrmAssistant.Mod
             _createSortName = typeof(BaseItem).GetMethod("CreateSortName",
                 BindingFlags.Instance | BindingFlags.NonPublic, null,
                 new[] { typeof(ReadOnlySpan<char>) }, null);
-            var embyApi = Assembly.Load("Emby.Api");
+
+            var embyApi = EmbyVersionAdapter.Instance.TryLoadAssembly("Emby.Api");
+            if (embyApi == null) return;
+
             var tagService = embyApi.GetType("Emby.Api.UserLibrary.TagService");
+            if (tagService == null) return;
+
             _getPrefixes =
                 tagService.GetMethod("Get", new[] { embyApi.GetType("Emby.Api.UserLibrary.GetPrefixes") });
             _getArtistPrefixes =
@@ -44,8 +50,10 @@ namespace StrmAssistant.Mod
         protected override void Prepare(bool apply)
         {
             PatchUnpatch(PatchTracker, apply, _createSortName, postfix: nameof(CreateSortNamePostfix));
-            PatchUnpatch(PatchTracker, apply, _getPrefixes, postfix: nameof(GetPrefixesPostfix));
-            PatchUnpatch(PatchTracker, apply, _getArtistPrefixes, postfix: nameof(GetPrefixesPostfix));
+            if (_getPrefixes != null)
+                PatchUnpatch(PatchTracker, apply, _getPrefixes, postfix: nameof(GetPrefixesPostfix));
+            if (_getArtistPrefixes != null)
+                PatchUnpatch(PatchTracker, apply, _getArtistPrefixes, postfix: nameof(GetPrefixesPostfix));
         }
 
         [HarmonyPostfix]

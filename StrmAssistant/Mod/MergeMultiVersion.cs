@@ -7,6 +7,7 @@ using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Services;
 using StrmAssistant.Common;
+using StrmAssistant.Core;
 using StrmAssistant.Provider;
 using System;
 using System.Collections.Generic;
@@ -43,10 +44,10 @@ namespace StrmAssistant.Mod
             try
             {
                 // 加载 Emby.Naming
-                var namingAssembly = EmbyVersionCompatibility.TryLoadAssembly("Emby.Naming");
+                var namingAssembly = EmbyVersionAdapter.Instance.TryLoadAssembly("Emby.Naming");
                 if (namingAssembly != null)
                 {
-                    var videoListResolverType = EmbyVersionCompatibility.TryGetType(namingAssembly, "Emby.Naming.Video.VideoListResolver");
+                    var videoListResolverType = EmbyVersionAdapter.Instance.TryGetType(namingAssembly.GetName().Name, "Emby.Naming.Video.VideoListResolver");
                     if (videoListResolverType != null)
                     {
                         _isEligibleForMultiVersion = videoListResolverType.GetMethod("IsEligibleForMultiVersion",
@@ -60,10 +61,10 @@ namespace StrmAssistant.Mod
                 }
 
                 // 加载 Emby.Providers
-                var embyProviders = EmbyVersionCompatibility.TryLoadAssembly("Emby.Providers");
+                var embyProviders = EmbyVersionAdapter.Instance.TryLoadAssembly("Emby.Providers");
                 if (embyProviders != null)
                 {
-                    var providerManager = EmbyVersionCompatibility.TryGetType(embyProviders, "Emby.Providers.Manager.ProviderManager");
+                    var providerManager = EmbyVersionAdapter.Instance.TryGetType(embyProviders.GetName().Name, "Emby.Providers.Manager.ProviderManager");
                     if (providerManager != null)
                     {
                         _canRefreshImage = providerManager.GetMethod("CanRefresh", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -85,10 +86,10 @@ namespace StrmAssistant.Mod
                 }
 
                 // 加载 Emby.Api
-                var embyApi = EmbyVersionCompatibility.TryLoadAssembly("Emby.Api");
+                var embyApi = EmbyVersionAdapter.Instance.TryLoadAssembly("Emby.Api");
                 if (embyApi != null)
                 {
-                    var itemRefreshService = EmbyVersionCompatibility.TryGetType(embyApi, "Emby.Api.ItemRefreshService");
+                    var itemRefreshService = EmbyVersionAdapter.Instance.TryGetType(embyApi.GetName().Name, "Emby.Api.ItemRefreshService");
                     if (itemRefreshService != null)
                     {
                         _getRefreshOptions = itemRefreshService.GetMethod("GetRefreshOptions", 
@@ -113,7 +114,7 @@ namespace StrmAssistant.Mod
                     Plugin.Instance.Logger.Warn($"MergeMultiVersion: Missing components - {string.Join(", ", missingComponents)}");
                     Plugin.Instance.Logger.Warn("Multi-version merge may not work fully on this Emby version");
                     
-                    EmbyVersionCompatibility.LogCompatibilityInfo(
+                    EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                         nameof(MergeMultiVersion),
                         false,
                         $"{missingComponents.Count} required methods not found");
@@ -122,7 +123,7 @@ namespace StrmAssistant.Mod
                 {
                     Plugin.Instance.Logger.Info("MergeMultiVersion: All components loaded successfully");
                     
-                    EmbyVersionCompatibility.LogCompatibilityInfo(
+                    EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                         nameof(MergeMultiVersion),
                         true,
                         "All required components available");
@@ -137,7 +138,7 @@ namespace StrmAssistant.Mod
                     Plugin.Instance.Logger.Debug(ex.StackTrace);
                 }
                 
-                EmbyVersionCompatibility.LogCompatibilityInfo(
+                EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                     nameof(MergeMultiVersion),
                     false,
                     "Initialization error - feature may be limited");

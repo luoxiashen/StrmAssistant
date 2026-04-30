@@ -62,47 +62,48 @@ namespace StrmAssistant.Mod
         {
             var mediaEncodingAssembly = Assembly.Load("Emby.Server.MediaEncoding");
             var imageExtractorBaseType =
-                mediaEncodingAssembly.GetType("Emby.Server.MediaEncoding.ImageExtraction.ImageExtractorBase");
-            _staticConstructor = imageExtractorBaseType.GetConstructor(BindingFlags.Static | BindingFlags.NonPublic,
+                mediaEncodingAssembly?.GetType("Emby.Server.MediaEncoding.ImageExtraction.ImageExtractorBase");
+            _staticConstructor = imageExtractorBaseType?.GetConstructor(BindingFlags.Static | BindingFlags.NonPublic,
                 null, Type.EmptyTypes, null);
             _resourcePoolField =
-                imageExtractorBaseType.GetField("resourcePool", BindingFlags.NonPublic | BindingFlags.Static);
+                imageExtractorBaseType?.GetField("resourcePool", BindingFlags.NonPublic | BindingFlags.Static);
             _isShortcutGetter = typeof(BaseItem).GetProperty("IsShortcut", BindingFlags.Instance | BindingFlags.Public)
                 ?.GetGetMethod();
             _isShortcutProperty =
                 typeof(BaseItem).GetProperty("IsShortcut", BindingFlags.Instance | BindingFlags.Public);
 
             var embyProviders = Assembly.Load("Emby.Providers");
-            var videoImageProvider = embyProviders.GetType("Emby.Providers.MediaInfo.VideoImageProvider");
+            var videoImageProvider = embyProviders?.GetType("Emby.Providers.MediaInfo.VideoImageProvider");
             _supportsVideoImageCapture =
-                videoImageProvider.GetMethod("Supports", BindingFlags.Instance | BindingFlags.Public);
-            _getImage = videoImageProvider.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                videoImageProvider?.GetMethod("Supports", BindingFlags.Instance | BindingFlags.Public);
+            _getImage = videoImageProvider?.GetMethods(BindingFlags.Public | BindingFlags.Instance)
                 .Where(m => m.Name == "GetImage")
                 .OrderByDescending(m => m.GetParameters().Length)
                 .FirstOrDefault();
-            var audioImageProvider = embyProviders.GetType("Emby.Providers.MediaInfo.AudioImageProvider");
+            var audioImageProvider = embyProviders?.GetType("Emby.Providers.MediaInfo.AudioImageProvider");
             _supportsAudioEmbeddedImages =
-                audioImageProvider.GetMethod("Supports", BindingFlags.Instance | BindingFlags.Public);
+                audioImageProvider?.GetMethod("Supports", BindingFlags.Instance | BindingFlags.Public);
 
             var supportsThumbnailsProperty =
                 typeof(Video).GetProperty("SupportsThumbnails", BindingFlags.Public | BindingFlags.Instance);
             _supportsThumbnailsGetter = supportsThumbnailsProperty?.GetGetMethod();
             _runExtraction =
-                imageExtractorBaseType.GetMethod("RunExtraction", BindingFlags.Instance | BindingFlags.Public);
+                imageExtractorBaseType?.GetMethod("RunExtraction", BindingFlags.Instance | BindingFlags.Public);
             _quickSingleImageExtractor =
-                mediaEncodingAssembly.GetType("Emby.Server.MediaEncoding.ImageExtraction.QuickSingleImageExtractor");
+                mediaEncodingAssembly?.GetType("Emby.Server.MediaEncoding.ImageExtraction.QuickSingleImageExtractor");
 
             var embyServerImplementationsAssembly = Assembly.Load("Emby.Server.Implementations");
             var sqliteItemRepository =
-                embyServerImplementationsAssembly.GetType("Emby.Server.Implementations.Data.SqliteItemRepository");
-            _logThumbnailImageExtractionFailure = sqliteItemRepository.GetMethod("LogThumbnailImageExtractionFailure",
+                embyServerImplementationsAssembly?.GetType("Emby.Server.Implementations.Data.SqliteItemRepository");
+            _logThumbnailImageExtractionFailure = sqliteItemRepository?.GetMethod("LogThumbnailImageExtractionFailure",
                 BindingFlags.Public | BindingFlags.Instance);
 
             var optionDefCollection = AccessTools.TypeByName("Emby.Ffmpeg.Model.Options.Collections.OptionDefCollection");
             var optionOwner = AccessTools.TypeByName("Emby.Ffmpeg.Model.Options.Interfaces.IOptionOwner");
-            _baseOptionsConstructor = AccessTools.Constructor(
-                AccessTools.TypeByName("Emby.Ffmpeg.Model.Options.Collections.BaseOptions"),
-                new[] { optionDefCollection, optionOwner });
+            var baseOptionsType = AccessTools.TypeByName("Emby.Ffmpeg.Model.Options.Collections.BaseOptions");
+            _baseOptionsConstructor = baseOptionsType != null
+                ? AccessTools.Constructor(baseOptionsType, new[] { optionDefCollection, optionOwner })
+                : null;
         }
 
         protected override void Prepare(bool apply)

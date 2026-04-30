@@ -89,9 +89,9 @@ namespace StrmAssistant.Mod
                     new[] { typeof(RemoteImageFetchOptions), typeof(CancellationToken) }, null);
 
                 var embyProviders = Assembly.Load("Emby.Providers");
-                var providerManager = embyProviders.GetType("Emby.Providers.Manager.ProviderManager");
+                var providerManager = embyProviders?.GetType("Emby.Providers.Manager.ProviderManager");
                 _canRefreshMetadata =
-                    providerManager.GetMethod("CanRefresh", BindingFlags.Static | BindingFlags.NonPublic);
+                    providerManager?.GetMethod("CanRefresh", BindingFlags.Static | BindingFlags.NonPublic);
             }
             else
             {

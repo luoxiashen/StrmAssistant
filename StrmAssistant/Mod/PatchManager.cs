@@ -96,6 +96,7 @@ namespace StrmAssistant.Mod
 
         public static bool IsPatched(MethodBase methodInfo, Type type)
         {
+            if (methodInfo == null || HarmonyMod == null) return false;
             var patchedMethods = Harmony.GetAllPatchedMethods();
             if (!patchedMethods.Contains(methodInfo)) return false;
             var patchInfo = Harmony.GetPatchInfo(methodInfo);
@@ -367,8 +368,10 @@ namespace StrmAssistant.Mod
 
             if (targetMethod is null)
             {
-                Plugin.Instance.Logger.Warn($"{tracker.PatchType.Name} PatchUnpatch Failed: Target method is null");
-                tracker.FallbackPatchApproach = PatchApproach.None;
+                if (!suppress && Plugin.Instance.DebugMode)
+                {
+                    Plugin.Instance.Logger.Debug($"{tracker.PatchType.Name} PatchUnpatch skipped: Target method is null");
+                }
                 return false;
             }
 

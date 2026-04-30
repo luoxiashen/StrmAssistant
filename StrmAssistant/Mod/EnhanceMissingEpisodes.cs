@@ -31,8 +31,8 @@ namespace StrmAssistant.Mod
         protected override void OnInitialize()
         {
             var embyProviders = Assembly.Load("Emby.Providers");
-            var providerManager = embyProviders.GetType("Emby.Providers.Manager.ProviderManager");
-            _getEnabledMetadataProviders = providerManager.GetMethod("GetEnabledMetadataProviders",
+            var providerManager = embyProviders?.GetType("Emby.Providers.Manager.ProviderManager");
+            _getEnabledMetadataProviders = providerManager?.GetMethod("GetEnabledMetadataProviders",
                 BindingFlags.Instance | BindingFlags.Public);
         }
 

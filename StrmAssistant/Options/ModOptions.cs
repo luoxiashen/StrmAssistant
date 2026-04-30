@@ -49,8 +49,29 @@ namespace StrmAssistant.Options
             [DescriptionL("ItemType_Studio_Studio", typeof(Resources))] Studio
         }
 
+        public enum SearchTuningOption
+        {
+            [DescriptionL("SearchTuningOption_ExcludeOriginalTitle_ExcludeOriginalTitle", typeof(Resources))]
+            ExcludeOriginalTitle,
+
+            [DescriptionL("SearchTuningOption_TraditionalToSimplifiedChinese_TraditionalToSimplifiedChinese", typeof(Resources))]
+            TraditionalToSimplifiedChinese,
+
+            [DescriptionL("SearchTuningOption_SuppressSearchSuggestions_SuppressSearchSuggestions", typeof(Resources))]
+            SuppressSearchSuggestions,
+
+            [DescriptionL("SearchTuningOption_DigitsAsTmdbId_DigitsAsTmdbId", typeof(Resources))]
+            DigitsAsTmdbId,
+
+            [DescriptionL("SearchTuningOption_SkipStartupFtsRebuild_SkipStartupFtsRebuild", typeof(Resources))]
+            SkipStartupFtsRebuild
+        }
+
         [Browsable(false)]
         public List<EditorSelectOption> SearchItemTypeList { get; set; } = new List<EditorSelectOption>();
+
+        [Browsable(false)]
+        public List<EditorSelectOption> SearchTuningOptionList { get; set; } = new List<EditorSelectOption>();
 
         [DisplayNameL("ModOptions_SearchScope_Search_Scope", typeof(Resources))]
         [DescriptionL("ModOptions_SearchScope_Include_item_types__Blank_includes_all_", typeof(Resources))]
@@ -59,12 +80,13 @@ namespace StrmAssistant.Options
         [VisibleCondition(nameof(EnhanceChineseSearch), SimpleCondition.IsTrue)]
         public string SearchScope { get; set; } =
             string.Join(",", new[] { SearchItemType.Movie, SearchItemType.Collection, SearchItemType.Series });
-        
-        [DisplayNameL("ModOptions_ExcludeOriginalTitle_Exclude_Original_Title", typeof(Resources))]
-        [DescriptionL("ModOptions_ExcludeOriginalTitle_Exclude_original_title_from_search__Default_is_OFF_", typeof(Resources))]
-        [Required]
+
+        [DisplayNameL("ModOptions_SearchTuningPreferences_Search_Tuning_Preferences", typeof(Resources))]
+        [DescriptionL("ModOptions_SearchTuningPreferences_Search_tuning_preferences__Default_is_none_", typeof(Resources))]
+        [EditMultilSelect]
+        [SelectItemsSource(nameof(SearchTuningOptionList))]
         [VisibleCondition(nameof(EnhanceChineseSearch), SimpleCondition.IsTrue)]
-        public bool ExcludeOriginalTitleFromSearch { get; set; } = false;
+        public string SearchTuningPreferences { get; set; } = string.Empty;
 
         [Browsable(false)]
         public bool IsChineseSearchSupported =>
@@ -74,17 +96,25 @@ namespace StrmAssistant.Options
         public void Initialize()
         {
             SearchItemTypeList.Clear();
-
             foreach (Enum item in Enum.GetValues(typeof(SearchItemType)))
             {
-                var selectOption = new EditorSelectOption
+                SearchItemTypeList.Add(new EditorSelectOption
                 {
                     Value = item.ToString(),
                     Name = EnumExtensions.GetDescription(item),
                     IsEnabled = true,
-                };
+                });
+            }
 
-                SearchItemTypeList.Add(selectOption);
+            SearchTuningOptionList.Clear();
+            foreach (Enum item in Enum.GetValues(typeof(SearchTuningOption)))
+            {
+                SearchTuningOptionList.Add(new EditorSelectOption
+                {
+                    Value = item.ToString(),
+                    Name = EnumExtensions.GetDescription(item),
+                    IsEnabled = true,
+                });
             }
         }
     }

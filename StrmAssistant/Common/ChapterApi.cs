@@ -185,19 +185,19 @@ namespace StrmAssistant.Common
                     }
 
                     var chapters = _itemRepository.GetChapters(e);
-                    switch (markerType)
+                    if (markerType == MarkerType.IntroEnd)
                     {
-                        case MarkerType.IntroEnd:
+                        bool hasIntroStart = false, hasIntroEnd = false;
+                        foreach (var c in chapters)
                         {
-                            var hasIntroStart = chapters.Any(c => c.MarkerType == MarkerType.IntroStart);
-                            var hasIntroEnd = chapters.Any(c => c.MarkerType == MarkerType.IntroEnd);
-                            return !hasIntroStart || !hasIntroEnd;
+                            if (c.MarkerType == MarkerType.IntroStart) hasIntroStart = true;
+                            else if (c.MarkerType == MarkerType.IntroEnd) hasIntroEnd = true;
+                            if (hasIntroStart && hasIntroEnd) return false;
                         }
-                        case MarkerType.CreditsStart:
-                            var hasCredits = chapters.Any(c => c.MarkerType == MarkerType.CreditsStart);
-                            return !hasCredits;
+                        return true;
                     }
-
+                    if (markerType == MarkerType.CreditsStart)
+                        return chapters.All(c => c.MarkerType != MarkerType.CreditsStart);
                     return false;
                 });
 
@@ -213,22 +213,19 @@ namespace StrmAssistant.Common
                     }
 
                     var chapters = _itemRepository.GetChapters(e);
-                    switch (markerType)
+                    if (markerType == MarkerType.IntroEnd)
                     {
-                        case MarkerType.IntroEnd:
+                        bool hasIntroStart = false, hasIntroEnd = false;
+                        foreach (var c in chapters)
                         {
-                            var hasIntroStart = chapters.Any(c =>
-                                c.MarkerType == MarkerType.IntroStart && !AllowOverwrite(c));
-                            var hasIntroEnd = chapters.Any(c =>
-                                c.MarkerType == MarkerType.IntroEnd && !AllowOverwrite(c));
-                            return !hasIntroStart || !hasIntroEnd;
+                            if (c.MarkerType == MarkerType.IntroStart && !AllowOverwrite(c)) hasIntroStart = true;
+                            else if (c.MarkerType == MarkerType.IntroEnd && !AllowOverwrite(c)) hasIntroEnd = true;
+                            if (hasIntroStart && hasIntroEnd) return false;
                         }
-                        case MarkerType.CreditsStart:
-                            var hasCredits = chapters.Any(c =>
-                                c.MarkerType == MarkerType.CreditsStart && !AllowOverwrite(c));
-                            return !hasCredits;
+                        return true;
                     }
-
+                    if (markerType == MarkerType.CreditsStart)
+                        return chapters.All(c => c.MarkerType != MarkerType.CreditsStart || AllowOverwrite(c));
                     return false;
                 });
 
@@ -355,19 +352,20 @@ namespace StrmAssistant.Common
 
             var episodesInSeason = GetEpisodesInSeason(item.Season);
 
-            var result = episodesInSeason.Any(e =>
+            return episodesInSeason.Any(e =>
             {
                 var chapters = _itemRepository.GetChapters(e);
-                var hasIntroMarkers =
-                    chapters.Any(c => c.MarkerType == MarkerType.IntroStart && IsMarkerAddedByIntroSkip(c)) &&
-                    chapters.Any(c => c.MarkerType == MarkerType.IntroEnd && IsMarkerAddedByIntroSkip(c));
-                var hasCreditsStart =
-                    chapters.Any(c => c.MarkerType == MarkerType.CreditsStart && IsMarkerAddedByIntroSkip(c));
-
-                return hasIntroMarkers || hasCreditsStart;
+                bool hasIntroStart = false, hasIntroEnd = false, hasCreditsStart = false;
+                foreach (var c in chapters)
+                {
+                    if (!IsMarkerAddedByIntroSkip(c)) continue;
+                    if (c.MarkerType == MarkerType.IntroStart) hasIntroStart = true;
+                    else if (c.MarkerType == MarkerType.IntroEnd) hasIntroEnd = true;
+                    else if (c.MarkerType == MarkerType.CreditsStart) hasCreditsStart = true;
+                    if ((hasIntroStart && hasIntroEnd) || hasCreditsStart) return true;
+                }
+                return false;
             });
-
-            return result;
         }
 
         public List<Episode> SeasonHasIntroCredits(List<Episode> episodes)
@@ -375,6 +373,7 @@ namespace StrmAssistant.Common
             var episodesInScope = episodes.Where(e => Plugin.PlaySessionMonitor.IsLibraryInScope(e)).ToList();
 
             var parentIds = episodesInScope.Select(e => e.ParentId).Distinct().ToArray();
+            var scopeIds = new HashSet<long>(episodesInScope.Select(e => e.InternalId));
 
             var groupedByParent = _libraryManager.GetItemList(new InternalItemsQuery
                 {
@@ -385,7 +384,7 @@ namespace StrmAssistant.Common
                     HasIndexNumber = true
                 })
                 .OfType<Episode>()
-                .Where(ep => !episodesInScope.Select(e => e.InternalId).Contains(ep.InternalId))
+                .Where(ep => !scopeIds.Contains(ep.InternalId))
                 .GroupBy(ep => ep.ParentId);
 
             var resultEpisodes = new List<Episode>();

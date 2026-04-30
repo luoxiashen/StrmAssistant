@@ -71,6 +71,9 @@ namespace StrmAssistant
 
         private readonly Guid _id = new Guid("63c322b7-a371-41a3-b11f-04f8418b37d8");
 
+        private static readonly string _cachedVersion =
+            Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+
         public readonly ILogger Logger;
         public readonly IApplicationHost ApplicationHost;
         public readonly IApplicationPaths ApplicationPaths;
@@ -94,6 +97,7 @@ namespace StrmAssistant
             IServerConfigurationManager configurationManager, ITaskManager taskManager,
             IImageExtractionManager imageExtractionManager, IServerApplicationPaths serverApplicationPaths)
         {
+            Instance?.CleanupResources(false);
             Instance = this;
             Logger = logManager.GetLogger(Name);
             Logger.Info("Plugin is getting loaded.");
@@ -141,6 +145,8 @@ namespace StrmAssistant
             ExperienceEnhanceStore = new ExperienceEnhanceOptionsStore(applicationHost, Logger,
                 Name + "_" + nameof(ExperienceEnhanceOptions));
             InitializeOptionCache();
+
+            Resources.Culture = DefaultUICulture;
 
             if (MainOptionsStore.GetOptions().AboutOptions.DebugMode)
             {
@@ -226,6 +232,17 @@ namespace StrmAssistant
                 Logger.Debug($"Optimization advisor initialization failed: {ex.Message}");
             }
             
+            // 启动定期内存清理器（按配置启停，防止 Emby 内存持续增长）
+            try
+            {
+                var memOpts = MainOptionsStore.GetOptions().GeneralOptions;
+                MemoryCleaner.ApplySettings(Logger, memOpts.EnableMemoryCleanup, memOpts.MemoryCleanupIntervalMinutes);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"MemoryCleaner initialization failed: {ex.Message}");
+            }
+
             // 启动定期性能报告（仅在DebugMode下，每60分钟一次）
             if (DebugMode)
             {
@@ -273,6 +290,11 @@ namespace StrmAssistant
 
         private void OnRefreshCompleted(object sender, GenericEventArgs<RefreshProgressInfo> e)
         {
+            if (e.Argument?.Item != null)
+            {
+                EnqueueChineseSearchRefresh(e.Argument.Item);
+            }
+
             if (_libraryManager.IsScanRunning) return;
 
             var options = ExperienceEnhanceStore.GetOptions();
@@ -297,6 +319,52 @@ namespace StrmAssistant
                     }
                 }
             }
+        }
+
+        private void EnqueueChineseSearchRefresh(BaseItem item)
+        {
+            if (item == null) return;
+
+            var searchScope = GetSearchScope() ?? Array.Empty<string>();
+            if (ShouldEnqueueChineseSearchRefresh(item, searchScope))
+                EnhanceChineseSearch.EnqueueFtsRefresh(item.InternalId);
+
+            if (item is Series || item is Season)
+            {
+                var childTypes = GetChineseSearchRefreshChildTypes(item, searchScope);
+                if (childTypes.Length == 0) return;
+
+                var children = _libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    AncestorIds = new[] { item.InternalId },
+                    IncludeItemTypes = childTypes,
+                    Recursive = true
+                });
+
+                foreach (var child in children)
+                {
+                    if (ShouldEnqueueChineseSearchRefresh(child, searchScope))
+                        EnhanceChineseSearch.EnqueueFtsRefresh(child.InternalId);
+                }
+            }
+        }
+
+        private static bool ShouldEnqueueChineseSearchRefresh(BaseItem item, string[] searchScope)
+        {
+            if (item == null) return false;
+            if (searchScope.Length == 0) return true;
+            return searchScope.Contains(item.GetType().Name, StringComparer.Ordinal);
+        }
+
+        private static string[] GetChineseSearchRefreshChildTypes(BaseItem item, string[] searchScope)
+        {
+            var candidates = item is Series
+                ? new[] { nameof(Season), nameof(Episode) }
+                : new[] { nameof(Episode) };
+
+            return searchScope.Length == 0
+                ? candidates
+                : candidates.Where(type => searchScope.Contains(type, StringComparer.Ordinal)).ToArray();
         }
 
         private void OnUserCreated(object sender, GenericEventArgs<User> e)
@@ -402,6 +470,7 @@ namespace StrmAssistant
                 {
                     NotificationApi.FavoritesUpdateSendNotification(e.Item);
                 }
+
             }
             catch (Exception ex)
             {
@@ -494,13 +563,45 @@ namespace StrmAssistant
 
         public override void OnUninstalling()
         {
-            if (MainOptionsStore.GetOptions().ModOptions.EnhanceChineseSearch)
-            {
-                _ = NotificationApi.SendMessageToAdmins(
-                    $"[{Resources.PluginOptions_EditorTitle_Strm_Assistant}] {Resources.Uninstall_Warning}", 10000);
-            }
+            CleanupResources(true);
 
             base.OnUninstalling();
+        }
+
+        private void CleanupResources(bool notifyAdmins)
+        {
+            try
+            {
+                _libraryManager.ItemAdded -= OnItemAdded;
+                _libraryManager.ItemUpdated -= OnItemUpdated;
+                _libraryManager.ItemRemoved -= OnItemRemoved;
+                _providerManager.RefreshCompleted -= OnRefreshCompleted;
+                _sessionManager.PlaybackStopped -= OnPlaybackStopped;
+                _userManager.UserCreated -= OnUserCreated;
+                _userManager.UserDeleted -= OnUserDeleted;
+                _userManager.UserConfigurationUpdated -= OnUserConfigurationUpdated;
+                _userDataManager.UserDataSaved -= OnUserDataSaved;
+                CollectionFolder.LibraryOptionsUpdated -= OnLibraryOptionsUpdated;
+
+                QueueManager.Dispose();
+                MemoryCleaner.DisposeInstance();
+                PerformanceReporter.DisposeInstance();
+                PlaySessionMonitor?.Dispose();
+                PatchManager.ClearCaches();
+                ShortcutMenuHelper.Dispose();
+
+                _pages?.Clear();
+
+                if (notifyAdmins && MainOptionsStore.GetOptions().ModOptions.EnhanceChineseSearch)
+                {
+                    _ = NotificationApi.SendMessageToAdmins(
+                        $"[{Resources.PluginOptions_EditorTitle_Strm_Assistant}] {Resources.Uninstall_Warning}", 10000);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger?.Warn($"Plugin cleanup failed: {ex.Message}");
+            }
         }
 
         public ImageFormat ThumbImageFormat => ImageFormat.Png;
@@ -511,12 +612,31 @@ namespace StrmAssistant
 
         public sealed override string Name => "Strm Assistant";
 
-        public string CurrentVersion => Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+        public string CurrentVersion => _cachedVersion;
 
-        public string UserAgent => $"{Name}/{CurrentVersion}";
+        public string UserAgent => $"{Name}/{_cachedVersion}";
 
-        public CultureInfo DefaultUICulture =>
-            new CultureInfo(MainOptionsStore.GetOptions().AboutOptions.DefaultUICulture);
+        public CultureInfo DefaultUICulture
+        {
+            get
+            {
+                var configured = MainOptionsStore.GetOptions().AboutOptions.DefaultUICulture;
+                if (string.IsNullOrEmpty(configured) ||
+                    string.Equals(configured, AboutOptions.UICultureAuto, StringComparison.OrdinalIgnoreCase))
+                {
+                    return CultureInfo.CurrentUICulture;
+                }
+
+                try
+                {
+                    return new CultureInfo(configured);
+                }
+                catch (CultureNotFoundException)
+                {
+                    return CultureInfo.CurrentUICulture;
+                }
+            }
+        }
 
         public bool DebugMode;
 

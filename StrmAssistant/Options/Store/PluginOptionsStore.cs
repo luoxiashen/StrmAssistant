@@ -96,6 +96,11 @@ namespace StrmAssistant.Options.Store
                 var changes = PropertyChangeDetector.DetectObjectPropertyChanges(PluginOptions, options);
                 var changedProperties = new HashSet<string>(changes.Select(c => c.PropertyName));
 
+                if (changedProperties.Contains(nameof(PluginOptions.AboutOptions.DefaultUICulture)))
+                {
+                    Resources.Culture = Plugin.Instance.DefaultUICulture;
+                }
+
                 if (changedProperties.Contains(nameof(PluginOptions.GeneralOptions.CatchupMode)))
                 {
                     if (options.GeneralOptions.CatchupMode)
@@ -130,6 +135,14 @@ namespace StrmAssistant.Options.Store
                     QueueManager.UpdateTier2Semaphore(options.GeneralOptions.Tier2MaxConcurrentCount);
                 }
 
+                if (changedProperties.Contains(nameof(PluginOptions.GeneralOptions.EnableMemoryCleanup)) ||
+                    changedProperties.Contains(nameof(PluginOptions.GeneralOptions.MemoryCleanupIntervalMinutes)))
+                {
+                    StrmAssistant.Core.MemoryCleaner.ApplySettings(_logger,
+                        options.GeneralOptions.EnableMemoryCleanup,
+                        options.GeneralOptions.MemoryCleanupIntervalMinutes);
+                }
+
                 if (PatchManager.EnhanceChineseSearch != null)
                 {
                     var isSimpleTokenizer = string.Equals(EnhanceChineseSearch.CurrentTokenizerName, "simple",
@@ -148,6 +161,12 @@ namespace StrmAssistant.Options.Store
                 if (changedProperties.Contains(nameof(PluginOptions.ModOptions.SearchScope)))
                 {
                     UpdateSearchScope(options.ModOptions.SearchScope);
+                }
+
+                if (PatchManager.EnhanceChineseSearch != null &&
+                    changedProperties.Contains(nameof(PluginOptions.ModOptions.SearchTuningPreferences)))
+                {
+                    Mod.EnhanceChineseSearch.UpdateTuningFlags(options.ModOptions);
                 }
 
                 if (changedProperties.Contains(nameof(PluginOptions.NetworkOptions.EnableProxyServer)))
@@ -208,7 +227,16 @@ namespace StrmAssistant.Options.Store
                             .Where(d => d != null) ?? Enumerable.Empty<string>());
                     _logger.Info("EnhanceChineseSearch - SearchScope is set to {0}",
                         string.IsNullOrEmpty(searchScope) ? "ALL" : searchScope);
-                    _logger.Info("ExcludeOriginalTitleFromSearch is set to {0}", options.ModOptions.ExcludeOriginalTitleFromSearch);
+                    var tuningPrefs = string.Join(", ",
+                        options.ModOptions.SearchTuningPreferences
+                            ?.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s =>
+                                Enum.TryParse(s.Trim(), true, out ModOptions.SearchTuningOption opt)
+                                    ? opt.GetDescription()
+                                    : null)
+                            .Where(d => d != null) ?? Enumerable.Empty<string>());
+                    _logger.Info("EnhanceChineseSearch - SearchTuningPreferences is set to {0}",
+                        string.IsNullOrEmpty(tuningPrefs) ? "NONE" : tuningPrefs);
 
                     _logger.Info("EnableProxyServer is set to {0}", options.NetworkOptions.EnableProxyServer);
                     _logger.Info("ProxyServerUrl is set to {0}",

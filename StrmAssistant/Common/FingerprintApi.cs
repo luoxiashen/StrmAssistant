@@ -13,6 +13,7 @@ using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Serialization;
 using StrmAssistant.Common;
+using StrmAssistant.Core;
 using StrmAssistant.Mod;
 using StrmAssistant.Options;
 using StrmAssistant.Properties;
@@ -59,7 +60,7 @@ namespace StrmAssistant.Common
 
             try
             {
-                var embyProviders = EmbyVersionCompatibility.TryLoadAssembly("Emby.Providers");
+                var embyProviders = EmbyVersionAdapter.Instance.TryLoadAssembly("Emby.Providers");
                 if (embyProviders == null)
                 {
                     _logger.Error($"{nameof(FingerprintApi)} - Failed to load Emby.Providers assembly");
@@ -67,7 +68,7 @@ namespace StrmAssistant.Common
                     return;
                 }
 
-                var audioFingerprintManager = EmbyVersionCompatibility.TryGetType(embyProviders, "Emby.Providers.Markers.AudioFingerprintManager");
+                var audioFingerprintManager = EmbyVersionAdapter.Instance.TryGetType(embyProviders.GetName().Name, "Emby.Providers.Markers.AudioFingerprintManager");
                 if (audioFingerprintManager != null)
                 {
                     var audioFingerprintManagerConstructor = audioFingerprintManager.GetConstructor(
@@ -88,7 +89,7 @@ namespace StrmAssistant.Common
                         });
                         
                         // 尝试查找 CreateTitleFingerprint，可能有不同的参数签名
-                        _createTitleFingerprint = EmbyVersionCompatibility.FindCompatibleMethod(
+                        _createTitleFingerprint = EmbyVersionAdapter.Instance.FindCompatibleMethod(
                             audioFingerprintManager,
                             "CreateTitleFingerprint",
                             BindingFlags.Public | BindingFlags.Instance,
@@ -151,7 +152,7 @@ namespace StrmAssistant.Common
                 
                 PatchTracker.FallbackPatchApproach = PatchApproach.None;
                 
-                EmbyVersionCompatibility.LogCompatibilityInfo(
+                EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                     nameof(FingerprintApi),
                     false,
                     "AudioFingerprintManager not available - intro skip disabled");
@@ -169,7 +170,7 @@ namespace StrmAssistant.Common
                     _logger.Info($"{nameof(FingerprintApi)} - Harmony patches applied successfully");
                 }
                 
-                EmbyVersionCompatibility.LogCompatibilityInfo(
+                EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                     nameof(FingerprintApi),
                     true,
                     $"Using {PatchTracker.FallbackPatchApproach} approach");
@@ -177,7 +178,7 @@ namespace StrmAssistant.Common
             else
             {
                 _logger.Info($"{nameof(FingerprintApi)} - Reflection approach active");
-                EmbyVersionCompatibility.LogCompatibilityInfo(
+                EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                     nameof(FingerprintApi),
                     true,
                     "Reflection mode active");

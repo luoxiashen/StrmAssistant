@@ -31,9 +31,9 @@ namespace StrmAssistant.Mod
         {
             var embyServerImplementationsAssembly = Assembly.Load("Emby.Server.Implementations");
             var dtoService =
-                embyServerImplementationsAssembly.GetType("Emby.Server.Implementations.Dto.DtoService");
+                embyServerImplementationsAssembly?.GetType("Emby.Server.Implementations.Dto.DtoService");
             _attachPeople =
-                dtoService.GetMethod("AttachPeople", BindingFlags.NonPublic | BindingFlags.Instance);
+                dtoService?.GetMethod("AttachPeople", BindingFlags.NonPublic | BindingFlags.Instance);
         }
 
         protected override void Prepare(bool apply)

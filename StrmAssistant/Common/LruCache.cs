@@ -4,12 +4,13 @@ using System.Threading;
 
 namespace StrmAssistant.Common
 {
-    public class LruCache
+    public class LruCache : IDisposable
     {
         private readonly int _capacity;
         private readonly Dictionary<string, LinkedListNode<KeyValuePair<string, object>>> _cacheMap;
         private readonly LinkedList<KeyValuePair<string, object>> _orderList;
         private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim();
+        private bool _disposed;
 
         public LruCache(int capacity = 20)
         {
@@ -66,6 +67,15 @@ namespace StrmAssistant.Common
             finally
             {
                 _lock.ExitWriteLock();
+            }
+        }
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _lock.Dispose();
+                _disposed = true;
             }
         }
     }

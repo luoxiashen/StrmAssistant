@@ -30,13 +30,13 @@ namespace StrmAssistant.Mod
             {
                 var embyServerImplementationsAssembly = Assembly.Load("Emby.Server.Implementations");
                 var collectionManager =
-                    embyServerImplementationsAssembly.GetType(
+                    embyServerImplementationsAssembly?.GetType(
                         "Emby.Server.Implementations.Collections.CollectionManager");
-                _ensureLibraryFolder = collectionManager.GetMethod("EnsureLibraryFolder",
+                _ensureLibraryFolder = collectionManager?.GetMethod("EnsureLibraryFolder",
                     BindingFlags.Instance | BindingFlags.NonPublic);
                 var userViewManager =
-                    embyServerImplementationsAssembly.GetType("Emby.Server.Implementations.Library.UserViewManager");
-                _getUserViews = userViewManager.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                    embyServerImplementationsAssembly?.GetType("Emby.Server.Implementations.Library.UserViewManager");
+                _getUserViews = userViewManager?.GetMethods(BindingFlags.Instance | BindingFlags.Public)
                     .FirstOrDefault(m => m.Name == "GetUserViews" &&
                                          (m.GetParameters().Length == 3 || m.GetParameters().Length == 4));
             }

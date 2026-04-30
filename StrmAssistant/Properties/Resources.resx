@@ -593,6 +593,27 @@
   <data name="ModOptions_ExcludeOriginalTitle_Exclude_original_title_from_search__Default_is_OFF_" xml:space="preserve">
     <value>Exclude original title from search. Default is OFF.</value>
   </data>
+  <data name="ModOptions_SearchTuningPreferences_Search_Tuning_Preferences" xml:space="preserve">
+    <value>Search Tuning Preferences</value>
+  </data>
+  <data name="ModOptions_SearchTuningPreferences_Search_tuning_preferences__Default_is_none_" xml:space="preserve">
+    <value>Search tuning preferences. Default is none.</value>
+  </data>
+  <data name="SearchTuningOption_ExcludeOriginalTitle_ExcludeOriginalTitle" xml:space="preserve">
+    <value>Exclude Original Title</value>
+  </data>
+  <data name="SearchTuningOption_TraditionalToSimplifiedChinese_TraditionalToSimplifiedChinese" xml:space="preserve">
+    <value>Traditional to Simplified Chinese</value>
+  </data>
+  <data name="SearchTuningOption_SuppressSearchSuggestions_SuppressSearchSuggestions" xml:space="preserve">
+    <value>Suppress Search Suggestions</value>
+  </data>
+  <data name="SearchTuningOption_DigitsAsTmdbId_DigitsAsTmdbId" xml:space="preserve">
+    <value>Digits as TMDB ID</value>
+  </data>
+  <data name="SearchTuningOption_SkipStartupFtsRebuild_SkipStartupFtsRebuild" xml:space="preserve">
+    <value>Skip Startup FTS Rebuild</value>
+  </data>
   <data name="IntroSkipPreference_NoDetectionButReset_NoDetectionButReset" xml:space="preserve">
     <value>No detection but pause operation to set intro and/or credits markers</value>
   </data>
@@ -748,5 +769,26 @@
   </data>
   <data name="ExclusiveControl_NoNfoSaverOptimization_No_Nfo_Saver_Optimization" xml:space="preserve">
     <value>No Nfo Saver Optimization</value>
+  </data>
+  <data name="GeneralOptions_EnableMemoryCleanup_Title" xml:space="preserve">
+    <value>Enable Periodic Memory Cleanup</value>
+  </data>
+  <data name="GeneralOptions_EnableMemoryCleanup_Description" xml:space="preserve">
+    <value>Periodically force a full GC and (on Windows) trim the process working set to prevent Emby's memory from growing unboundedly. Default is True.</value>
+  </data>
+  <data name="GeneralOptions_MemoryCleanupInterval_Title" xml:space="preserve">
+    <value>Memory Cleanup Interval (Minutes)</value>
+  </data>
+  <data name="GeneralOptions_MemoryCleanupInterval_Description" xml:space="preserve">
+    <value>Memory cleanup interval. Must be between 1 and 120. Default is 5.</value>
+  </data>
+  <data name="AboutOptions_DefaultUICulture_Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="AboutOptions_DefaultUICulture_Description" xml:space="preserve">
+    <value>Plugin UI language. Select Auto to follow the system culture, or pick a language to force it. Default is Auto.</value>
+  </data>
+  <data name="AboutOptions_DefaultUICulture_Auto" xml:space="preserve">
+    <value>Auto</value>
   </data>
 </root>

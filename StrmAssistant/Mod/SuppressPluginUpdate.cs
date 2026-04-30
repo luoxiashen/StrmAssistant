@@ -1,6 +1,7 @@
 ﻿using HarmonyLib;
 using MediaBrowser.Model.Updates;
 using StrmAssistant.Common;
+using StrmAssistant.Core;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -31,21 +32,21 @@ namespace StrmAssistant.Mod
         {
             try
             {
-                var embyServerImplementationsAssembly = EmbyVersionCompatibility.TryLoadAssembly("Emby.Server.Implementations");
+                var embyServerImplementationsAssembly = EmbyVersionAdapter.Instance.TryLoadAssembly("Emby.Server.Implementations");
                 if (embyServerImplementationsAssembly == null)
                 {
                     Plugin.Instance.Logger.Warn($"{nameof(SuppressPluginUpdate)}: Failed to load Emby.Server.Implementations assembly");
                     PatchTracker.FallbackPatchApproach = PatchApproach.None;
                     
-                    EmbyVersionCompatibility.LogCompatibilityInfo(
+                    EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                         nameof(SuppressPluginUpdate),
                         false,
                         "Emby.Server.Implementations assembly not found");
                     return;
                 }
 
-                var installationManager = EmbyVersionCompatibility.TryGetType(
-                    embyServerImplementationsAssembly,
+                var installationManager = EmbyVersionAdapter.Instance.TryGetType(
+                    embyServerImplementationsAssembly.GetName().Name,
                     "Emby.Server.Implementations.Updates.InstallationManager");
                 
                 if (installationManager == null)
@@ -53,7 +54,7 @@ namespace StrmAssistant.Mod
                     Plugin.Instance.Logger.Warn($"{nameof(SuppressPluginUpdate)}: InstallationManager type not found");
                     PatchTracker.FallbackPatchApproach = PatchApproach.None;
                     
-                    EmbyVersionCompatibility.LogCompatibilityInfo(
+                    EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                         nameof(SuppressPluginUpdate),
                         false,
                         "InstallationManager type not found in assembly");
@@ -75,7 +76,7 @@ namespace StrmAssistant.Mod
                     Plugin.Instance.Logger.Info($"  Return type: {_getAvailablePluginUpdates.ReturnType.Name}");
                     Plugin.Instance.Logger.Info($"  Parameters: {_getAvailablePluginUpdates.GetParameters().Length}");
                     
-                    EmbyVersionCompatibility.LogCompatibilityInfo(
+                    EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                         nameof(SuppressPluginUpdate),
                         true,
                         "All components loaded successfully");
@@ -101,7 +102,7 @@ namespace StrmAssistant.Mod
                     
                     PatchTracker.FallbackPatchApproach = PatchApproach.None;
                     
-                    EmbyVersionCompatibility.LogCompatibilityInfo(
+                    EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                         nameof(SuppressPluginUpdate),
                         false,
                         "GetAvailablePluginUpdates method not found");
@@ -118,7 +119,7 @@ namespace StrmAssistant.Mod
                 
                 PatchTracker.FallbackPatchApproach = PatchApproach.None;
                 
-                EmbyVersionCompatibility.LogCompatibilityInfo(
+                EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                     nameof(SuppressPluginUpdate),
                     false,
                     "Initialization error - feature disabled");
@@ -139,30 +140,24 @@ namespace StrmAssistant.Mod
         [HarmonyPostfix]
         private static Task<PackageVersionInfo[]> GetAvailablePluginUpdatesPostfix(Task<PackageVersionInfo[]> __result)
         {
-            PackageVersionInfo[] result = null;
+            return (__result ?? Task.FromResult(Array.Empty<PackageVersionInfo>()))
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted || t.IsCanceled) return Array.Empty<PackageVersionInfo>();
 
-            try
-            {
-                result = __result?.Result;
-            }
-            catch
-            {
-                // ignored
-            }
+                    var result = t.Result;
+                    if (result is null) return Array.Empty<PackageVersionInfo>();
 
-            if (result is null) return Task.FromResult(Array.Empty<PackageVersionInfo>());
+                    var suppressPluginUpdates = new HashSet<string>(
+                        Plugin.Instance.ExperienceEnhanceStore.GetOptions().SuppressPluginUpdates
+                            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                            .Select(p => p.Trim()), StringComparer.OrdinalIgnoreCase);
 
-            var suppressPluginUpdates = new HashSet<string>(
-                Plugin.Instance.ExperienceEnhanceStore.GetOptions().SuppressPluginUpdates
-                    .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(p => p.Trim()), StringComparer.OrdinalIgnoreCase);
-
-            result = result.Where(p =>
-                    !suppressPluginUpdates.Contains(p.name) &&
-                    !suppressPluginUpdates.Contains(Path.GetFileNameWithoutExtension(p.targetFilename)))
-                .ToArray();
-
-            return Task.FromResult(result);
+                    return result.Where(p =>
+                            !suppressPluginUpdates.Contains(p.name) &&
+                            !suppressPluginUpdates.Contains(Path.GetFileNameWithoutExtension(p.targetFilename)))
+                        .ToArray();
+                }, TaskContinuationOptions.ExecuteSynchronously);
         }
     }
 }

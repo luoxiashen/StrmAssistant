@@ -503,6 +503,27 @@
   <data name="ModOptions_ExcludeOriginalTitle_Exclude_original_title_from_search__Default_is_OFF_" xml:space="preserve">
     <value>排除原語言標題搜索，預設為關閉。</value>
   </data>
+  <data name="ModOptions_SearchTuningPreferences_Search_Tuning_Preferences" xml:space="preserve">
+    <value>搜尋調優偏好</value>
+  </data>
+  <data name="ModOptions_SearchTuningPreferences_Search_tuning_preferences__Default_is_none_" xml:space="preserve">
+    <value>搜尋調優偏好設定，預設為無。</value>
+  </data>
+  <data name="SearchTuningOption_ExcludeOriginalTitle_ExcludeOriginalTitle" xml:space="preserve">
+    <value>排除原語言標題</value>
+  </data>
+  <data name="SearchTuningOption_TraditionalToSimplifiedChinese_TraditionalToSimplifiedChinese" xml:space="preserve">
+    <value>繁體轉簡體中文</value>
+  </data>
+  <data name="SearchTuningOption_SuppressSearchSuggestions_SuppressSearchSuggestions" xml:space="preserve">
+    <value>禁用搜尋建議</value>
+  </data>
+  <data name="SearchTuningOption_DigitsAsTmdbId_DigitsAsTmdbId" xml:space="preserve">
+    <value>純數字作為TMDB ID</value>
+  </data>
+  <data name="SearchTuningOption_SkipStartupFtsRebuild_SkipStartupFtsRebuild" xml:space="preserve">
+    <value>啟動時跳過分詞索引重建</value>
+  </data>
   <data name="IntroSkipPreference_NoDetectionButReset_NoDetectionButReset" xml:space="preserve">
     <value>無自動偵測僅暫停操作設定片頭片尾標記</value>
   </data>
@@ -661,5 +682,26 @@
   </data>
   <data name="ExclusiveControl_NoNfoSaverOptimization_No_Nfo_Saver_Optimization" xml:space="preserve">
     <value>無NFO保存優化</value>
+  </data>
+  <data name="GeneralOptions_EnableMemoryCleanup_Title" xml:space="preserve">
+    <value>啟用定期記憶體清理</value>
+  </data>
+  <data name="GeneralOptions_EnableMemoryCleanup_Description" xml:space="preserve">
+    <value>定期強制完整 GC，並在 Windows 上歸還行程工作集，防止 Emby 記憶體持續增長。預設開啟。</value>
+  </data>
+  <data name="GeneralOptions_MemoryCleanupInterval_Title" xml:space="preserve">
+    <value>記憶體清理間隔（分鐘）</value>
+  </data>
+  <data name="GeneralOptions_MemoryCleanupInterval_Description" xml:space="preserve">
+    <value>記憶體清理間隔，必須在 1 至 120 之間，預設為 5。</value>
+  </data>
+  <data name="AboutOptions_DefaultUICulture_Language" xml:space="preserve">
+    <value>語言</value>
+  </data>
+  <data name="AboutOptions_DefaultUICulture_Description" xml:space="preserve">
+    <value>外掛介面語言。選擇「自動」將跟隨系統語言，選擇具體語言則強制使用該語言。預設為自動。</value>
+  </data>
+  <data name="AboutOptions_DefaultUICulture_Auto" xml:space="preserve">
+    <value>自動</value>
   </data>
 </root>

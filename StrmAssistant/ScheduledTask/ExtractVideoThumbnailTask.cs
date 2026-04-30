@@ -50,7 +50,8 @@ namespace StrmAssistant.ScheduledTask
             var items = Plugin.VideoThumbnailApi.FetchExtractTaskItems();
             _logger.Info($"VideoThumbnailExtract - Number of items: {items.Count}");
 
-            if (items.Count > 0) IsRunning = true;
+            var hasItems = items.Count > 0;
+            if (hasItems) IsRunning = true;
 
             var directoryService = new DirectoryService(_logger, _fileSystem);
 
@@ -61,110 +62,139 @@ namespace StrmAssistant.ScheduledTask
 
             var tasks = new List<Task>();
 
-            foreach (var item in items)
+            try
             {
+                foreach (var item in items)
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    try
+                    {
+                        await QueueManager.MasterSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        QueueManager.MasterSemaphore.Release();
+                        break;
+                    }
+
+                    var taskIndex = ++index;
+                    var taskItem = item;
+                    var task = Task.Run(async () =>
+                    {
+                        var result = false;
+
+                        try
+                        {
+                            if (cancellationToken.IsCancellationRequested)
+                            {
+                                return;
+                            }
+
+                            ChapterChangeTracker.BypassInstance(taskItem);
+
+                            var chapters = _itemRepository.GetChapters(taskItem);
+
+                            var thumbnailResult = false;
+
+                            if (persistMediaInfo)
+                            {
+                                thumbnailResult = await Plugin.MediaInfoApi.DeserializeChapterInfo(taskItem, chapters,
+                                    directoryService, "VideoThumbnailExtract Task").ConfigureAwait(false);
+                            }
+
+                            if (!thumbnailResult)
+                            {
+                                if (!mediaInfoRestoreMode)
+                                {
+                                    var libraryOptions = _libraryManager.GetLibraryOptions(taskItem);
+                                    result = await Plugin.VideoThumbnailApi
+                                        .RefreshThumbnailImages(taskItem, libraryOptions, directoryService, chapters, true,
+                                            true, cancellationToken).ConfigureAwait(false);
+                                }
+                                else
+                                {
+                                    Interlocked.Increment(ref skip);
+                                }
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            _logger.Info($"VideoThumbnailExtract - Item cancelled: {taskItem.Name} - {taskItem.Path}");
+                        }
+                        catch (Exception e)
+                        {
+                            _logger.Error($"VideoThumbnailExtract - Item failed: {taskItem.Name} - {taskItem.Path}");
+                            _logger.Error(e.Message);
+                            _logger.Debug(e.StackTrace);
+                        }
+                        finally
+                        {
+                            if (result && cooldownSeconds.HasValue)
+                            {
+                                try
+                                {
+                                    await Task.Delay(cooldownSeconds.Value * 1000, cancellationToken).ConfigureAwait(false);
+                                }
+                                catch
+                                {
+                                    // ignored
+                                }
+                            }
+
+                            QueueManager.MasterSemaphore.Release();
+
+                            var currentCount = Interlocked.Increment(ref current);
+                            progress.Report(currentCount / total * 100);
+
+                            if (!mediaInfoRestoreMode)
+                            {
+                                _logger.Info(
+                                    $"VideoThumbnailExtract - Progress {currentCount}/{total} - Task {taskIndex}: {taskItem.Path}");
+                            }
+                        }
+                    }, cancellationToken);
+                    tasks.Add(task);
+
+                    // 周期性剔除已完成 task，释放它们捕获的 BaseItem 闭包
+                    if (tasks.Count >= 100)
+                    {
+                        tasks.RemoveAll(t => t.IsCompleted);
+                    }
+                }
+
                 try
                 {
-                    await QueueManager.MasterSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
                 }
-                catch
+                catch (OperationCanceledException) { /* expected on cancel */ }
+                catch (Exception ex)
                 {
-                    return;
+                    _logger.Debug("VideoThumbnailExtract - Drain pending tasks: " + ex.Message);
                 }
 
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    QueueManager.MasterSemaphore.Release();
                     _logger.Info("VideoThumbnailExtract - Scheduled Task Cancelled");
-                    return;
                 }
-
-                var taskIndex = ++index;
-                var taskItem = item;
-                var task = Task.Run(async () =>
+                else
                 {
-                    var result = false;
-
-                    try
-                    {
-                        if (cancellationToken.IsCancellationRequested)
-                        {
-                            _logger.Info("VideoThumbnailExtract - Scheduled Task Cancelled");
-                            return;
-                        }
-
-                        ChapterChangeTracker.BypassInstance(taskItem);
-
-                        var chapters = _itemRepository.GetChapters(taskItem);
-
-                        var thumbnailResult = false;
-
-                        if (persistMediaInfo)
-                        {
-                            thumbnailResult = await Plugin.MediaInfoApi.DeserializeChapterInfo(taskItem, chapters,
-                                directoryService, "VideoThumbnailExtract Task").ConfigureAwait(false);
-                        }
-
-                        if (!thumbnailResult)
-                        {
-                            if (!mediaInfoRestoreMode)
-                            {
-                                var libraryOptions = _libraryManager.GetLibraryOptions(taskItem);
-                                result = await Plugin.VideoThumbnailApi
-                                    .RefreshThumbnailImages(taskItem, libraryOptions, directoryService, chapters, true,
-                                        true, cancellationToken).ConfigureAwait(false);
-                            }
-                            else
-                            {
-                                Interlocked.Increment(ref skip);
-                            }
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        _logger.Info($"VideoThumbnailExtract - Item cancelled: {taskItem.Name} - {taskItem.Path}");
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.Error($"VideoThumbnailExtract - Item failed: {taskItem.Name} - {taskItem.Path}");
-                        _logger.Error(e.Message);
-                        _logger.Debug(e.StackTrace);
-                    }
-                    finally
-                    {
-                        if (result && cooldownSeconds.HasValue)
-                        {
-                            try
-                            {
-                                await Task.Delay(cooldownSeconds.Value * 1000, cancellationToken).ConfigureAwait(false);
-                            }
-                            catch
-                            {
-                                // ignored
-                            }
-                        }
-
-                        QueueManager.MasterSemaphore.Release();
-
-                        var currentCount = Interlocked.Increment(ref current);
-                        progress.Report(currentCount / total * 100);
-
-                        if (!mediaInfoRestoreMode)
-                        {
-                            _logger.Info(
-                                $"VideoThumbnailExtract - Progress {currentCount}/{total} - Task {taskIndex}: {taskItem.Path}");
-                        }
-                    }
-                }, cancellationToken);
-                tasks.Add(task);
+                    progress.Report(100.0);
+                    _logger.Info($"VideoThumbnailExtract - Number of items skipped: {skip}");
+                    _logger.Info("VideoThumbnailExtract - Scheduled Task Complete");
+                }
             }
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            if (items.Count > 0) IsRunning = false;
-
-            progress.Report(100.0);
-            _logger.Info($"VideoThumbnailExtract - Number of items skipped: {skip}");
-            _logger.Info("VideoThumbnailExtract - Scheduled Task Complete");
+            finally
+            {
+                tasks.Clear();
+                items.Clear();
+                if (hasItems) IsRunning = false;
+            }
         }
 
         public string Category =>

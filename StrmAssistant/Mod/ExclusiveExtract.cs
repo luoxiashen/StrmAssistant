@@ -81,55 +81,55 @@ namespace StrmAssistant.Mod
         protected override void OnInitialize()
         {
             var embyProviders = Assembly.Load("Emby.Providers");
-            var providerManager = embyProviders.GetType("Emby.Providers.Manager.ProviderManager");
-            _canRefreshMetadata = providerManager.GetMethod("CanRefresh", BindingFlags.Static | BindingFlags.NonPublic);
-            _canRefreshImage = providerManager.GetMethod("CanRefresh", BindingFlags.Instance | BindingFlags.NonPublic);
-            var itemImageProvider = embyProviders.GetType("Emby.Providers.Manager.ItemImageProvider");
-            _clearImages = itemImageProvider.GetMethod("ClearImages", BindingFlags.Instance | BindingFlags.NonPublic);
+            var providerManager = embyProviders?.GetType("Emby.Providers.Manager.ProviderManager");
+            _canRefreshMetadata = providerManager?.GetMethod("CanRefresh", BindingFlags.Static | BindingFlags.NonPublic);
+            _canRefreshImage = providerManager?.GetMethod("CanRefresh", BindingFlags.Instance | BindingFlags.NonPublic);
+            var itemImageProvider = embyProviders?.GetType("Emby.Providers.Manager.ItemImageProvider");
+            _clearImages = itemImageProvider?.GetMethod("ClearImages", BindingFlags.Instance | BindingFlags.NonPublic);
             _isSaverEnabledForItem =
-                providerManager.GetMethod("IsSaverEnabledForItem", BindingFlags.Instance | BindingFlags.NonPublic);
+                providerManager?.GetMethod("IsSaverEnabledForItem", BindingFlags.Instance | BindingFlags.NonPublic);
             _afterMetadataRefresh =
                 typeof(BaseItem).GetMethod("AfterMetadataRefresh", BindingFlags.Instance | BindingFlags.Public);
-            var fFProbeProvider = embyProviders.GetType("Emby.Providers.MediaInfo.FFProbeProvider");
+            var fFProbeProvider = embyProviders?.GetType("Emby.Providers.MediaInfo.FFProbeProvider");
             _isProbingAllowed =
-                fFProbeProvider.GetMethod("IsProbingAllowed", BindingFlags.Static | BindingFlags.NonPublic);
+                fFProbeProvider?.GetMethod("IsProbingAllowed", BindingFlags.Static | BindingFlags.NonPublic);
 
             var mediaEncodingAssembly = Assembly.Load("Emby.Server.MediaEncoding");
             var mediaProbeManager =
-                mediaEncodingAssembly.GetType("Emby.Server.MediaEncoding.Probing.MediaProbeManager");
+                mediaEncodingAssembly?.GetType("Emby.Server.MediaEncoding.Probing.MediaProbeManager");
             _runFfProcess =
-                mediaProbeManager.GetMethod("RunFfProcess", BindingFlags.Instance | BindingFlags.NonPublic);
-            var encodingHelpers = mediaEncodingAssembly.GetType("Emby.Server.MediaEncoding.Encoder.EncodingHelpers");
+                mediaProbeManager?.GetMethod("RunFfProcess", BindingFlags.Instance | BindingFlags.NonPublic);
+            var encodingHelpers = mediaEncodingAssembly?.GetType("Emby.Server.MediaEncoding.Encoder.EncodingHelpers");
             _getInputArgument =
-                encodingHelpers.GetMethod("GetInputArgument", BindingFlags.Static | BindingFlags.Public);
+                encodingHelpers?.GetMethod("GetInputArgument", BindingFlags.Static | BindingFlags.Public);
             var probeResultNormalizer =
-                mediaEncodingAssembly.GetType("Emby.Server.MediaEncoding.Probing.ProbeResultNormalizer");
+                mediaEncodingAssembly?.GetType("Emby.Server.MediaEncoding.Probing.ProbeResultNormalizer");
             _getMediaInfo =
-                probeResultNormalizer.GetMethod("GetMediaInfo", BindingFlags.Instance | BindingFlags.Public);
+                probeResultNormalizer?.GetMethod("GetMediaInfo", BindingFlags.Instance | BindingFlags.Public);
 
             var embyApi = Assembly.Load("Emby.Api");
-            var libraryStructureService = embyApi.GetType("Emby.Api.Library.LibraryStructureService");
-            _addVirtualFolder = libraryStructureService.GetMethod("Post",
-                new[] { embyApi.GetType("Emby.Api.Library.AddVirtualFolder") });
-            _removeVirtualFolder = libraryStructureService.GetMethod("Any",
-                new[] { embyApi.GetType("Emby.Api.Library.RemoveVirtualFolder") });
-            _addMediaPath = libraryStructureService.GetMethod("Post",
-                new[] { embyApi.GetType("Emby.Api.Library.AddMediaPath") });
-            _removeMediaPath = libraryStructureService.GetMethod("Any",
-                new[] { embyApi.GetType("Emby.Api.Library.RemoveMediaPath") });
-            
+            var libraryStructureService = embyApi?.GetType("Emby.Api.Library.LibraryStructureService");
+            _addVirtualFolder = libraryStructureService?.GetMethod("Post",
+                new[] { embyApi?.GetType("Emby.Api.Library.AddVirtualFolder") });
+            _removeVirtualFolder = libraryStructureService?.GetMethod("Any",
+                new[] { embyApi?.GetType("Emby.Api.Library.RemoveVirtualFolder") });
+            _addMediaPath = libraryStructureService?.GetMethod("Post",
+                new[] { embyApi?.GetType("Emby.Api.Library.AddMediaPath") });
+            _removeMediaPath = libraryStructureService?.GetMethod("Any",
+                new[] { embyApi?.GetType("Emby.Api.Library.RemoveMediaPath") });
+
             var embyServerImplementationsAssembly = Assembly.Load("Emby.Server.Implementations");
             var sqliteItemRepository =
-                embyServerImplementationsAssembly.GetType("Emby.Server.Implementations.Data.SqliteItemRepository");
-            _saveChapters = sqliteItemRepository.GetMethod("SaveChapters",
+                embyServerImplementationsAssembly?.GetType("Emby.Server.Implementations.Data.SqliteItemRepository");
+            _saveChapters = sqliteItemRepository?.GetMethod("SaveChapters",
                 BindingFlags.Instance | BindingFlags.Public, null,
                 new[] { typeof(long), typeof(bool), typeof(List<ChapterInfo>) }, null);
             _deleteChapters =
-                sqliteItemRepository.GetMethod("DeleteChapters", BindingFlags.Instance | BindingFlags.Public);
+                sqliteItemRepository?.GetMethod("DeleteChapters", BindingFlags.Instance | BindingFlags.Public);
 
-            var itemRefreshService = embyApi.GetType("Emby.Api.ItemRefreshService");
+            var itemRefreshService = embyApi?.GetType("Emby.Api.ItemRefreshService");
             _getRefreshOptions =
-                itemRefreshService.GetMethod("GetRefreshOptions", BindingFlags.Instance | BindingFlags.NonPublic);
+                itemRefreshService?.GetMethod("GetRefreshOptions", BindingFlags.Instance | BindingFlags.NonPublic);
         }
 
         protected override void Prepare(bool apply)

@@ -10,6 +10,7 @@ using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Logging;
+using StrmAssistant.Core;
 using StrmAssistant.Mod;
 using StrmAssistant.Properties;
 using System;
@@ -46,7 +47,7 @@ namespace StrmAssistant.Common
 
             try
             {
-                var embyProviders = EmbyVersionCompatibility.TryLoadAssembly("Emby.Providers");
+                var embyProviders = EmbyVersionAdapter.Instance.TryLoadAssembly("Emby.Providers");
                 if (embyProviders == null)
                 {
                     _logger.Error($"{nameof(VideoThumbnailApi)} - Failed to load Emby.Providers assembly");
@@ -54,7 +55,7 @@ namespace StrmAssistant.Common
                     return;
                 }
 
-                var thumbnailGenerator = EmbyVersionCompatibility.TryGetType(embyProviders, "Emby.Providers.MediaInfo.ThumbnailGenerator");
+                var thumbnailGenerator = EmbyVersionAdapter.Instance.TryGetType(embyProviders.GetName().Name, "Emby.Providers.MediaInfo.ThumbnailGenerator");
                 if (thumbnailGenerator != null)
                 {
                     var thumbnailGeneratorConstructor = thumbnailGenerator.GetConstructor(
@@ -116,7 +117,7 @@ namespace StrmAssistant.Common
                 
                 PatchTracker.FallbackPatchApproach = PatchApproach.None;
                 
-                EmbyVersionCompatibility.LogCompatibilityInfo(
+                EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                     nameof(VideoThumbnailApi),
                     false,
                     "ThumbnailGenerator not available");
@@ -147,7 +148,7 @@ namespace StrmAssistant.Common
                     _logger.Info($"{nameof(VideoThumbnailApi)} - Harmony patch applied (stub: {stubName}, params: {paramCount})");
                 }
                 
-                EmbyVersionCompatibility.LogCompatibilityInfo(
+                EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                     nameof(VideoThumbnailApi),
                     true,
                     $"Using {PatchTracker.FallbackPatchApproach} approach for Emby {AppVer}");
@@ -155,7 +156,7 @@ namespace StrmAssistant.Common
             else
             {
                 _logger.Info($"{nameof(VideoThumbnailApi)} - Reflection approach active");
-                EmbyVersionCompatibility.LogCompatibilityInfo(
+                EmbyVersionAdapter.Instance.LogCompatibilityInfo(
                     nameof(VideoThumbnailApi),
                     true,
                     "Reflection mode active");

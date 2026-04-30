@@ -1,6 +1,7 @@
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Model.Logging;
+using StrmAssistant.Core;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -132,11 +133,7 @@ namespace StrmAssistant.Common
             if (_currentMasterMaxConcurrentCount != maxConcurrentCount)
             {
                 _currentMasterMaxConcurrentCount = maxConcurrentCount;
-
-                var newMasterSemaphore = new SemaphoreSlim(maxConcurrentCount);
-                var oldMasterSemaphore = MasterSemaphore;
-                MasterSemaphore = newMasterSemaphore;
-                oldMasterSemaphore.Dispose();
+                MasterSemaphore = new SemaphoreSlim(maxConcurrentCount);
             }
         }
 
@@ -145,11 +142,7 @@ namespace StrmAssistant.Common
             if (_currentTier2MaxConcurrentCount != maxConcurrentCount)
             {
                 _currentTier2MaxConcurrentCount = maxConcurrentCount;
-
-                var newTier2Semaphore = new SemaphoreSlim(maxConcurrentCount);
-                var oldTier2Semaphore = Tier2Semaphore;
-                Tier2Semaphore = newTier2Semaphore;
-                oldTier2Semaphore.Dispose();
+                Tier2Semaphore = new SemaphoreSlim(maxConcurrentCount);
             }
         }
 
@@ -308,12 +301,31 @@ namespace StrmAssistant.Common
                                 }
                             }, cancellationToken);
                             tasks.Add(task);
+
+                            // 周期性剔除已完成 task，释放闭包捕获的 BaseItem 引用，
+                            // 避免大批量刮削期间整批引用堆积导致 RSS 持续上涨
+                            if (tasks.Count >= 100)
+                            {
+                                tasks.RemoveAll(t => t.IsCompleted);
+                            }
+
+                            // 中段尝试一次内存归还（受 MemoryCleaner 60s 节流约束，不会过频）
+                            if (tasks.Count > 0 && tasks.Count % 500 == 0)
+                            {
+                                MemoryCleaner.RequestCleanup("MediaInfoExtract Mid-Batch");
+                            }
                         }
 
                         await Task.WhenAll(tasks).ConfigureAwait(false);
                         tasks.Clear();
+                        // 显式释放本批所有元素，下一批之前不再钉住引用
+                        mediaInfoItems.Clear();
+                        dedupQueueItems.Clear();
 
                         IsMediaInfoProcessTaskRunning = false;
+
+                        // 一批刮削完成后，触发一次内存归还
+                        MemoryCleaner.RequestCleanup("MediaInfoExtract Batch");
                     }
 
                     Logger.Info("MediaInfoExtract - Clear Item Queue Stopped");
@@ -591,11 +603,23 @@ namespace StrmAssistant.Common
                                     }
                                 }, cancellationToken);
                                 seasonTasks.Add(seasonTask);
+
+                                // 大型剧集库下 seasonTasks 也会累积，闭包会钉住整季 Episode 引用
+                                if (seasonTasks.Count >= 50)
+                                {
+                                    seasonTasks.RemoveAll(t => t.IsCompleted);
+                                }
                             }
                         }
                         await Task.WhenAll(seasonTasks).ConfigureAwait(false);
+                        seasonTasks.Clear();
+                        episodes.Clear();
+                        dequeueItems.Clear();
 
                         IsMediaInfoProcessTaskRunning = false;
+
+                        // 指纹提取通常伴随大量 PCM/JSON 缓冲，结束后立即触发清理
+                        MemoryCleaner.RequestCleanup("IntroFingerprintExtract Batch");
                     }
 
                     Logger.Info("IntroFingerprintExtract - Clear Item Queue Stopped");
@@ -793,12 +817,26 @@ namespace StrmAssistant.Common
                                 }
                             }, cancellationToken);
                             tasks.Add(task);
+
+                            // 周期性剔除已完成 task，释放它们捕获的 Episode 闭包
+                            if (tasks.Count >= 100)
+                            {
+                                tasks.RemoveAll(t => t.IsCompleted);
+                            }
+
+                            if (tasks.Count > 0 && tasks.Count % 500 == 0)
+                            {
+                                MemoryCleaner.RequestCleanup("EpisodeRefresh Mid-Batch");
+                            }
                         }
 
                         await Task.WhenAll(tasks).ConfigureAwait(false);
                         tasks.Clear();
+                        itemsToRefresh.Clear();
 
                         IsEpisodeRefreshProcessTaskRunning = false;
+
+                        MemoryCleaner.RequestCleanup("EpisodeRefresh Batch");
                     }
 
                     Logger.Info("EpisodeRefresh - Clear Item Queue Stopped");
@@ -820,8 +858,31 @@ namespace StrmAssistant.Common
         public static void Dispose()
         {
             MediaInfoTokenSource?.Cancel();
+            MediaInfoTokenSource?.Dispose();
+            MediaInfoTokenSource = null;
+
+            IntroSkipTokenSource?.Cancel();
+            IntroSkipTokenSource?.Dispose();
+            IntroSkipTokenSource = null;
+
             FingerprintTokenSource?.Cancel();
+            FingerprintTokenSource?.Dispose();
+            FingerprintTokenSource = null;
+
             EpisodeRefreshTokenSource?.Cancel();
+            EpisodeRefreshTokenSource?.Dispose();
+            EpisodeRefreshTokenSource = null;
+
+            MediaInfoExtractItemQueue.Clear();
+            IntroSkipItemQueue.Clear();
+            FingerprintItemQueue.Clear();
+            EpisodeRefreshItemQueue.Clear();
+
+            MediaInfoProcessTask = null;
+            FingerprintProcessTask = null;
+            EpisodeRefreshProcessTask = null;
+            IsMediaInfoProcessTaskRunning = false;
+            IsEpisodeRefreshProcessTaskRunning = false;
         }
     }
 }

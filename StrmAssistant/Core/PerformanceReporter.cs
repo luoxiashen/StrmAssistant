@@ -51,6 +51,15 @@ namespace StrmAssistant.Core
                 }
             }
         }
+
+        public static void DisposeInstance()
+        {
+            lock (_lock)
+            {
+                _instance?.Dispose();
+                _instance = null;
+            }
+        }
         
         /// <summary>
         /// 启动定期报告

@@ -17,11 +17,13 @@ namespace StrmAssistant.Mod
 {
     public class AltMovieDbConfig : PatchBase<AltMovieDbConfig>
     {
+        private readonly PatchTracker _imagePatchTracker = new PatchTracker(typeof(AltMovieDbConfig), PatchApproach.Harmony);
         private static Assembly _movieDbAssembly;
         private static MethodInfo _getMovieDbResponse;
         private static MethodInfo _saveImageFromRemoteUrl;
         private static MethodInfo _downloadImage;
         private static MethodInfo _createHttpClientHandler;
+        private static MethodInfo[] _httpClientRequestMethods = Array.Empty<MethodInfo>();
 
         private static readonly string DefaultMovieDbApiUrl = "https://api.themoviedb.org";
         private static readonly string DefaultAltMovieDbApiUrl = "https://api.tmdb.org";
@@ -101,12 +103,22 @@ namespace StrmAssistant.Mod
                     embyServerImplementationsAssembly.GetType("Emby.Server.Implementations.ApplicationHost");
                 _createHttpClientHandler = applicationHost.GetMethod("CreateHttpClientHandler",
                     BindingFlags.NonPublic | BindingFlags.Instance);
+
+                _httpClientRequestMethods = AppDomain.CurrentDomain
+                    .GetAssemblies()
+                    .SelectMany(GetLoadableTypes)
+                    .Where(t => t.FullName?.IndexOf("HttpClient", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                    .Where(m => m.GetParameters().Any(p => p.ParameterType == typeof(HttpRequestOptions)))
+                    .ToArray();
             }
             else
             {
                 Plugin.Instance.Logger.Info("AltMovieDbConfig - MovieDb plugin is not installed");
                 PatchTracker.FallbackPatchApproach = PatchApproach.None;
+                _imagePatchTracker.FallbackPatchApproach = PatchApproach.None;
                 PatchTracker.IsSupported = false;
+                _imagePatchTracker.IsSupported = false;
             }
         }
 
@@ -128,8 +140,12 @@ namespace StrmAssistant.Mod
 
         private void PrepareImageUrl(bool apply)
         {
-            PatchUnpatch(PatchTracker, apply, _saveImageFromRemoteUrl, prefix: nameof(SaveImageFromRemoteUrlPrefix));
-            PatchUnpatch(PatchTracker, apply, _downloadImage, prefix: nameof(DownloadImagePrefix));
+            PatchUnpatch(_imagePatchTracker, apply, _saveImageFromRemoteUrl, prefix: nameof(SaveImageFromRemoteUrlPrefix));
+            PatchUnpatch(_imagePatchTracker, apply, _downloadImage, prefix: nameof(DownloadImagePrefix));
+            foreach (var method in _httpClientRequestMethods)
+            {
+                PatchUnpatch(_imagePatchTracker, apply, method, prefix: nameof(HttpRequestOptionsPrefix), suppress: true);
+            }
         }
 
         public void PatchImageUrl() => PrepareImageUrl(true);
@@ -159,13 +175,13 @@ namespace StrmAssistant.Mod
 
             var requestUrl = options.Url;
 
-            if (requestUrl.StartsWith(DefaultMovieDbApiUrl + "/3/configuration", StringComparison.Ordinal))
-            {
-                requestUrl = requestUrl.Replace(DefaultMovieDbApiUrl, DefaultAltMovieDbApiUrl);
-            }
-            else if (IsValidHttpUrl(apiUrl))
+            if (IsValidHttpUrl(apiUrl))
             {
                 requestUrl = requestUrl.Replace(DefaultMovieDbApiUrl, apiUrl);
+            }
+            else if (requestUrl.StartsWith(DefaultMovieDbApiUrl + "/3/configuration", StringComparison.Ordinal))
+            {
+                requestUrl = requestUrl.Replace(DefaultMovieDbApiUrl, DefaultAltMovieDbApiUrl);
             }
 
             if (IsValidMovieDbApiKey(apiKey))
@@ -191,10 +207,33 @@ namespace StrmAssistant.Mod
             }
         }
 
+        private static Type[] GetLoadableTypes(Assembly assembly)
+        {
+            try
+            {
+                return assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException e)
+            {
+                return e.Types.Where(t => t != null).ToArray();
+            }
+        }
+
         [HarmonyPrefix]
-        private static bool SaveImageFromRemoteUrlPrefix(BaseItem item, LibraryOptions libraryOptions, ref string url,
-            ImageType type, int? imageIndex, long[] generatedFromItemIds, IDirectoryService directoryService,
-            bool updateImageCache, CancellationToken cancellationToken)
+        private static bool HttpRequestOptionsPrefix(HttpRequestOptions options)
+        {
+            if (!string.IsNullOrEmpty(options?.Url))
+            {
+                var url = options.Url;
+                ReplaceMovieDbImageUrl(ref url);
+                options.Url = url;
+            }
+
+            return true;
+        }
+
+        [HarmonyPrefix]
+        private static bool SaveImageFromRemoteUrlPrefix(ref string url)
         {
             ReplaceMovieDbImageUrl(ref url);
 
@@ -202,8 +241,7 @@ namespace StrmAssistant.Mod
         }
 
         [HarmonyPrefix]
-        private static bool DownloadImagePrefix(ref string url, Guid urlHash, string pointerCachePath,
-            CancellationToken cancellationToken)
+        private static bool DownloadImagePrefix(ref string url)
         {
             ReplaceMovieDbImageUrl(ref url);
 

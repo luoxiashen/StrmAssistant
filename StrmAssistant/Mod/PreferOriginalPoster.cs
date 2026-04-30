@@ -44,6 +44,7 @@ namespace StrmAssistant.Mod
         private static MethodInfo _addLocalImage;
         private static MethodInfo _getLocalFiles;
         private static MethodInfo _populateSeasonImagesFromSeasonOrSeriesFolder;
+        private static bool _localImageStubsReady;
 
         private static readonly ConcurrentDictionary<string, ContextItem> CurrentItemsByTmdbId =
             new ConcurrentDictionary<string, ContextItem>();
@@ -116,8 +117,8 @@ namespace StrmAssistant.Mod
             if (_movieDbAssembly != null || _tvdbAssembly != null)
             {
                 var embyProvidersAssembly = Assembly.Load("Emby.Providers");
-                var providerManager = embyProvidersAssembly.GetType("Emby.Providers.Manager.ProviderManager");
-                _getAvailableRemoteImages = providerManager.GetMethod("GetAvailableRemoteImages",
+                var providerManager = embyProvidersAssembly?.GetType("Emby.Providers.Manager.ProviderManager");
+                _getAvailableRemoteImages = providerManager?.GetMethod("GetAvailableRemoteImages",
                     BindingFlags.Instance | BindingFlags.Public, null,
                     new[]
                     {
@@ -126,26 +127,31 @@ namespace StrmAssistant.Mod
                     }, null);
 
                 var embyLocalMetadata = Assembly.Load("Emby.LocalMetadata");
-                var localImageProvider = embyLocalMetadata.GetType("Emby.LocalMetadata.Images.LocalImageProvider");
-                _addLocalImage = localImageProvider.GetMethod("AddImage",
+                var localImageProvider = embyLocalMetadata?.GetType("Emby.LocalMetadata.Images.LocalImageProvider");
+                _addLocalImage = localImageProvider?.GetMethod("AddImage",
                     BindingFlags.Instance | BindingFlags.NonPublic,
                     new[]
                     {
                         typeof(FileSystemMetadata[]), typeof(List<LocalImageInfo>), typeof(string), typeof(ImageType)
                     });
+                var addLocalImagePatched = false;
                 if (_addLocalImage != null)
                 {
-                    ReversePatch(PatchTracker, _addLocalImage, nameof(AddLocalImageStub), suppressWarnings: false);
+                    addLocalImagePatched = ReversePatch(PatchTracker, _addLocalImage, nameof(AddLocalImageStub),
+                        suppressWarnings: false);
                 }
-                _getLocalFiles = localImageProvider.GetMethod("GetFiles",
+                _getLocalFiles = localImageProvider?.GetMethod("GetFiles",
                     BindingFlags.Instance | BindingFlags.NonPublic,
                     new[] { typeof(BaseItem), typeof(LibraryOptions), typeof(bool), typeof(IDirectoryService) });
+                var getLocalFilesPatched = false;
                 if (_getLocalFiles != null)
                 {
-                    ReversePatch(PatchTracker, _getLocalFiles, nameof(GetLocalFilesStub), suppressWarnings: false);
+                    getLocalFilesPatched = ReversePatch(PatchTracker, _getLocalFiles, nameof(GetLocalFilesStub),
+                        suppressWarnings: false);
                 }
+                _localImageStubsReady = addLocalImagePatched && getLocalFilesPatched;
                 _populateSeasonImagesFromSeasonOrSeriesFolder = localImageProvider
-                    .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?.GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
                     .FirstOrDefault(m => m.Name.StartsWith("PopulateSeasonImagesFrom"));
             }
             else
@@ -172,8 +178,11 @@ namespace StrmAssistant.Mod
 
             PatchUnpatch(PatchTracker, apply, _getAvailableRemoteImages,
                 prefix: nameof(GetAvailableRemoteImagesPrefix), postfix: nameof(GetAvailableRemoteImagesPostfix));
-            PatchUnpatch(PatchTracker, apply, _populateSeasonImagesFromSeasonOrSeriesFolder,
-                postfix: nameof(PopulateSeasonImagesFromSeasonOrSeriesFolderPostfix));
+            if (_localImageStubsReady)
+            {
+                PatchUnpatch(PatchTracker, apply, _populateSeasonImagesFromSeasonOrSeriesFolder,
+                    postfix: nameof(PopulateSeasonImagesFromSeasonOrSeriesFolderPostfix));
+            }
         }
 
         private static void AddContextItem(string tmdbId, string imdbId, string tvdbId)

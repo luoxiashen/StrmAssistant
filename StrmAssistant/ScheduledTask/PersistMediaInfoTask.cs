@@ -43,67 +43,105 @@ namespace StrmAssistant
 
             var tasks = new List<Task>();
 
-            foreach (var item in items)
+            try
             {
+                foreach (var item in items)
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    try
+                    {
+                        await QueueManager.Tier2Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        QueueManager.Tier2Semaphore.Release();
+                        break;
+                    }
+
+                    var taskIndex = ++index;
+                    var taskItem = item;
+                    var task = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            if (cancellationToken.IsCancellationRequested)
+                            {
+                                return;
+                            }
+
+                            var result = await Plugin.MediaInfoApi.SerializeMediaInfo(taskItem.InternalId, directoryService, false,
+                                "Persist MediaInfo Task").ConfigureAwait(false);
+
+                            if (!result) Interlocked.Increment(ref skip);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            _logger.Info($"MediaInfoPersist - Item cancelled: {taskItem.Name} - {taskItem.Path}");
+                        }
+                        catch (Exception e)
+                        {
+                            _logger.Error($"MediaInfoPersist - Item failed: {taskItem.Name} - {taskItem.Path}");
+                            _logger.Error(e.Message);
+                            _logger.Debug(e.StackTrace);
+                        }
+                        finally
+                        {
+                            QueueManager.Tier2Semaphore.Release();
+
+                            var currentCount = Interlocked.Increment(ref current);
+                            progress.Report(currentCount / total * 100);
+                        }
+                    }, cancellationToken);
+                    tasks.Add(task);
+
+                    // 周期性剔除已完成 task，释放它们捕获的 BaseItem 闭包
+                    if (tasks.Count >= 100)
+                    {
+                        tasks.RemoveAll(t => t.IsCompleted);
+                    }
+
+                    try
+                    {
+                        await Task.Delay(10, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                }
+
                 try
                 {
-                    await QueueManager.Tier2Semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
                 }
-                catch
+                catch (OperationCanceledException) { /* expected on cancel */ }
+                catch (Exception ex)
                 {
-                    return;
+                    _logger.Debug("MediaInfoPersist - Drain pending tasks: " + ex.Message);
                 }
 
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    QueueManager.Tier2Semaphore.Release();
                     _logger.Info("MediaInfoPersist - Scheduled Task Cancelled");
-                    return;
                 }
-
-                var taskIndex = ++index;
-                var taskItem = item;
-                var task = Task.Run(async () =>
+                else
                 {
-                    try
-                    {
-                        if (cancellationToken.IsCancellationRequested)
-                        {
-                            _logger.Info("MediaInfoPersist - Scheduled Task Cancelled");
-                            return;
-                        }
-
-                        var result = await Plugin.MediaInfoApi.SerializeMediaInfo(taskItem.InternalId, directoryService, false,
-                            "Persist MediaInfo Task").ConfigureAwait(false);
-
-                        if (!result) Interlocked.Increment(ref skip);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        _logger.Info($"MediaInfoPersist - Item cancelled: {taskItem.Name} - {taskItem.Path}");
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.Error($"MediaInfoPersist - Item failed: {taskItem.Name} - {taskItem.Path}");
-                        _logger.Error(e.Message);
-                        _logger.Debug(e.StackTrace);
-                    }
-                    finally
-                    {
-                        QueueManager.Tier2Semaphore.Release();
-
-                        var currentCount = Interlocked.Increment(ref current);
-                        progress.Report(currentCount / total * 100);
-                    }
-                }, cancellationToken);
-                tasks.Add(task);
-                Task.Delay(10).Wait();
+                    progress.Report(100.0);
+                    _logger.Info($"MediaInfoPersist - Number of items skipped: {skip}");
+                    _logger.Info("MediaInfoPersist - Scheduled Task Complete");
+                }
             }
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            progress.Report(100.0);
-            _logger.Info($"MediaInfoPersist - Number of items skipped: {skip}");
-            _logger.Info("MediaInfoPersist - Scheduled Task Complete");
+            finally
+            {
+                tasks.Clear();
+                items.Clear();
+            }
         }
 
         public string Category => Resources.ResourceManager.GetString("PluginOptions_EditorTitle_Strm_Assistant",
