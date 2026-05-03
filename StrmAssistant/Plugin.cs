@@ -321,18 +321,19 @@ namespace StrmAssistant
             }
         }
 
+        // FTS 入队不受 SearchScope 限制——SearchScope 仅控制搜索结果返回的条目类型，
+        // 所有类型（含 Episode/Season）均需保持拼音索引同步，否则 Emby 更新后会写入原始文本。
         private void EnqueueChineseSearchRefresh(BaseItem item)
         {
             if (item == null) return;
 
-            var searchScope = GetSearchScope() ?? Array.Empty<string>();
-            if (ShouldEnqueueChineseSearchRefresh(item, searchScope))
-                EnhanceChineseSearch.EnqueueFtsRefresh(item.InternalId);
+            EnhanceChineseSearch.EnqueueFtsRefresh(item.InternalId);
 
             if (item is Series || item is Season)
             {
-                var childTypes = GetChineseSearchRefreshChildTypes(item, searchScope);
-                if (childTypes.Length == 0) return;
+                var childTypes = item is Series
+                    ? new[] { nameof(Season), nameof(Episode) }
+                    : new[] { nameof(Episode) };
 
                 var children = _libraryManager.GetItemList(new InternalItemsQuery
                 {
@@ -342,29 +343,8 @@ namespace StrmAssistant
                 });
 
                 foreach (var child in children)
-                {
-                    if (ShouldEnqueueChineseSearchRefresh(child, searchScope))
-                        EnhanceChineseSearch.EnqueueFtsRefresh(child.InternalId);
-                }
+                    EnhanceChineseSearch.EnqueueFtsRefresh(child.InternalId);
             }
-        }
-
-        private static bool ShouldEnqueueChineseSearchRefresh(BaseItem item, string[] searchScope)
-        {
-            if (item == null) return false;
-            if (searchScope.Length == 0) return true;
-            return searchScope.Contains(item.GetType().Name, StringComparer.Ordinal);
-        }
-
-        private static string[] GetChineseSearchRefreshChildTypes(BaseItem item, string[] searchScope)
-        {
-            var candidates = item is Series
-                ? new[] { nameof(Season), nameof(Episode) }
-                : new[] { nameof(Episode) };
-
-            return searchScope.Length == 0
-                ? candidates
-                : candidates.Where(type => searchScope.Contains(type, StringComparer.Ordinal)).ToArray();
         }
 
         private void OnUserCreated(object sender, GenericEventArgs<User> e)
@@ -471,6 +451,7 @@ namespace StrmAssistant
                     NotificationApi.FavoritesUpdateSendNotification(e.Item);
                 }
 
+                EnqueueChineseSearchRefresh(e.Item);
             }
             catch (Exception ex)
             {
@@ -509,6 +490,8 @@ namespace StrmAssistant
                     MetadataApi.UpdateSeriesPeople(series);
                 }
             }
+
+            EnqueueChineseSearchRefresh(e.Item);
         }
 
         private void OnItemRemoved(object sender, ItemChangeEventArgs e)

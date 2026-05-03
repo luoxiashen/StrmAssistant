@@ -151,8 +151,15 @@ namespace StrmAssistant.Options.Store
                         !options.ModOptions.EnhanceChineseSearch && isSimpleTokenizer;
 
                     if (changedProperties.Contains(nameof(PluginOptions.ModOptions.EnhanceChineseSearch)) &&
-                        ((!options.ModOptions.EnhanceChineseSearch && isSimpleTokenizer) ||
-                         (options.ModOptions.EnhanceChineseSearch && !isSimpleTokenizer)))
+                        !options.ModOptions.EnhanceChineseSearch && isSimpleTokenizer)
+                    {
+                        if (!EnhanceChineseSearch.ScheduleRestoreFtsIndex())
+                        {
+                            Plugin.Instance.ApplicationHost.NotifyPendingRestart();
+                        }
+                    }
+                    else if (changedProperties.Contains(nameof(PluginOptions.ModOptions.EnhanceChineseSearch)) &&
+                             options.ModOptions.EnhanceChineseSearch && !isSimpleTokenizer)
                     {
                         Plugin.Instance.ApplicationHost.NotifyPendingRestart();
                     }

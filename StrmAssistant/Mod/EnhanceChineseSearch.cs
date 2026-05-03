@@ -54,8 +54,8 @@ namespace StrmAssistant.Mod
         private static bool _traditionalToSimplified;
         private static bool _suppressSearchSuggestions;
         private static bool _digitsAsTmdbId;
-        private static bool _skipStartupFtsRebuild;
         private static bool _extensionNeedsLoading;
+        private static CancellationTokenSource _catchUpCts;
         private static bool _useUnicode61Mode;
         private static readonly ConditionalWeakTable<object, object> _loadedConnections =
             new ConditionalWeakTable<object, object>();
@@ -71,6 +71,7 @@ namespace StrmAssistant.Mod
         private static volatile bool _enrichedIndexActive;
         private static volatile object _libraryRepository;
         private static int _ftsRefreshScheduled;
+        private static int _restoreFtsScheduled;
         // 单连接串行化，避免与同连接上的其他语句冲突（CacheIdsFromTextParamsPrefix 在搜索路径上调用）。
         private static readonly object _ftsRefreshLock = new object();
         private const int FtsRefreshMaxRowsPerConnection = 50;
@@ -129,8 +130,6 @@ namespace StrmAssistant.Mod
             _suppressSearchSuggestions = prefs.IndexOf(SearchTuningOption.SuppressSearchSuggestions.ToString(),
                 StringComparison.OrdinalIgnoreCase) >= 0;
             _digitsAsTmdbId = prefs.IndexOf(SearchTuningOption.DigitsAsTmdbId.ToString(),
-                StringComparison.OrdinalIgnoreCase) >= 0;
-            _skipStartupFtsRebuild = prefs.IndexOf(SearchTuningOption.SkipStartupFtsRebuild.ToString(),
                 StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
@@ -344,8 +343,12 @@ namespace StrmAssistant.Mod
             var tokenizerCheckQuery = $@"
                 SELECT 
                     CASE 
-                        WHEN instr(sql, 'tokenize=""simple""') > 0 THEN 'simple'
-                        WHEN instr(sql, 'tokenize=""unicode61 remove_diacritics 2""') > 0 THEN 'unicode61 remove_diacritics 2'
+                        WHEN instr(lower(sql), 'tokenize=""simple""') > 0
+                          OR instr(lower(sql), 'tokenize=''simple''') > 0
+                          OR instr(lower(sql), 'tokenize=simple') > 0 THEN 'simple'
+                        WHEN instr(lower(sql), 'tokenize=""unicode61 remove_diacritics 2""') > 0
+                          OR instr(lower(sql), 'tokenize=''unicode61 remove_diacritics 2''') > 0
+                          OR instr(lower(sql), 'tokenize=unicode61 remove_diacritics 2') > 0 THEN 'unicode61 remove_diacritics 2'
                         ELSE 'unknown'
                     END AS tokenizer_name
                 FROM 
@@ -369,22 +372,30 @@ namespace StrmAssistant.Mod
 
                 Plugin.Instance.Logger.Info("EnhanceChineseSearch - Current tokenizer (before) is " + CurrentTokenizerName);
 
-                if (!string.Equals(CurrentTokenizerName, "unknown", StringComparison.Ordinal))
+                var isRestoreMode = Plugin.Instance.MainOptionsStore.GetOptions().ModOptions.EnhanceChineseSearchRestore;
+
+                if (isRestoreMode)
                 {
-                    if (Plugin.Instance.MainOptionsStore.GetOptions().ModOptions.EnhanceChineseSearchRestore)
+                    if (!string.Equals(CurrentTokenizerName, "unicode61 remove_diacritics 2", StringComparison.Ordinal))
                     {
-                        if (string.Equals(CurrentTokenizerName, "simple", StringComparison.Ordinal))
-                        {
-                            rebuildFtsResult = RebuildFts(connection, ftsTableName, "unicode61 remove_diacritics 2");
-                        }
-                        if (rebuildFtsResult)
-                        {
-                            CurrentTokenizerName = "unicode61 remove_diacritics 2";
-                            Plugin.Instance.Logger.Info("EnhanceChineseSearch - Restore Success");
-                        }
+                        rebuildFtsResult = RebuildFts(connection, ftsTableName, "unicode61 remove_diacritics 2");
+                    }
+                    if (rebuildFtsResult)
+                    {
+                        CurrentTokenizerName = "unicode61 remove_diacritics 2";
+                        StopCatchUpLoop();
+                        _enrichedIndexActive = false;
+                        Plugin.Instance.Logger.Info("EnhanceChineseSearch - Restore Success");
                         ResetOptions();
                     }
-                    else if (Plugin.Instance.MainOptionsStore.GetOptions().ModOptions.EnhanceChineseSearch)
+                    else
+                    {
+                        Plugin.Instance.Logger.Warn("EnhanceChineseSearch - Restore failed, keeping restore flag for next startup");
+                    }
+                }
+                else if (!string.Equals(CurrentTokenizerName, "unknown", StringComparison.Ordinal))
+                {
+                    if (Plugin.Instance.MainOptionsStore.GetOptions().ModOptions.EnhanceChineseSearch)
                     {
                         if (_tokenizerReady)
                         {
@@ -396,28 +407,22 @@ namespace StrmAssistant.Mod
                                     ? "unicode61 remove_diacritics 2"
                                     : "simple";
 
-                                // 默认每次启动强制重建富化索引，确保未命中 ItemAdded/ItemUpdated
-                                // 事件的条目（外部工具批量入库等）被纳入拼音/拆字/首字母索引。
-                                // 用户可通过 SkipStartupFtsRebuild 选项启用快速启动：
-                                // 当 tokenizer 已匹配且现存索引通过健康检查时跳过重建，
-                                // 后续新增/更新条目由 _pendingFtsRefresh 增量队列覆盖。
-                                var canSkipRebuild = _skipStartupFtsRebuild
-                                    && string.Equals(CurrentTokenizerName, targetTokenizer, StringComparison.Ordinal)
-                                    && IsPinyinFtsIndexReady(connection, ftsTableName);
+                                // 智能启动：tokenizer 已匹配时直接跳过全量重建。
+                                // RebuildFts 使用 SQLite 事务保证原子性——tokenizer 已是目标值
+                                // 说明上次重建已完整提交，无需再做任何同步检查（避免 O(N) 全表扫描阻塞启动）。
+                                // 服务器关闭期间外部工具入库的条目由 ScheduleStartupCatchUp 后台补齐。
+                                // 后续新增/更新条目由 ItemAdded 事件 + _pendingFtsRefresh 增量队列覆盖。
+                                var tokenizerMatches = string.Equals(CurrentTokenizerName, targetTokenizer, StringComparison.Ordinal);
+                                var canSkipRebuild = tokenizerMatches;
 
                                 if (canSkipRebuild)
                                 {
                                     Plugin.Instance.Logger.Info(
-                                        "EnhanceChineseSearch - Skipping FTS rebuild on startup (fast start)");
+                                        "EnhanceChineseSearch - Tokenizer matches, skipping FTS rebuild");
                                     rebuildFtsResult = true;
                                 }
                                 else
                                 {
-                                    if (_skipStartupFtsRebuild)
-                                    {
-                                        Plugin.Instance.Logger.Info(
-                                            "EnhanceChineseSearch - Fast start requested but index check failed, falling back to full rebuild");
-                                    }
                                     Plugin.Instance.Logger.Info(
                                         "EnhanceChineseSearch - Rebuilding FTS index on startup");
                                     rebuildFtsResult = RebuildFts(connection, ftsTableName, targetTokenizer);
@@ -429,6 +434,9 @@ namespace StrmAssistant.Mod
                                     _ftsTableName = ftsTableName;
                                     _enrichedIndexActive = true;
                                     DrainPendingFtsRefresh(connection);
+                                    if (!_pendingFtsRefresh.IsEmpty)
+                                        SchedulePendingFtsRefresh();
+                                    ScheduleStartupCatchUp();
                                     Plugin.Instance.Logger.Info(_useUnicode61Mode
                                         ? "EnhanceChineseSearch - Load Success (unicode61 enriched mode)"
                                         : "EnhanceChineseSearch - Load Success");
@@ -1155,7 +1163,9 @@ namespace StrmAssistant.Mod
 
         private static void ResetOptions()
         {
-            Plugin.Instance.MainOptionsStore.GetOptions().ModOptions.EnhanceChineseSearch = false;
+            var modOptions = Plugin.Instance.MainOptionsStore.GetOptions().ModOptions;
+            modOptions.EnhanceChineseSearch = false;
+            modOptions.EnhanceChineseSearchRestore = false;
             Plugin.Instance.MainOptionsStore.SavePluginOptionsSuppress();
         }
 
@@ -1829,6 +1839,157 @@ namespace StrmAssistant.Mod
                         SchedulePendingFtsRefresh();
                 }
             });
+        }
+
+        // 启动后立即运行一次（延迟 30 秒），之后每 15 分钟循环扫描 fts 缺失条目并入队刷新。
+        // 停止：功能关闭或恢复时调用 StopCatchUpLoop()。
+        private static void ScheduleStartupCatchUp()
+        {
+            _catchUpCts?.Cancel();
+            _catchUpCts = new CancellationTokenSource();
+            var token = _catchUpCts.Token;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), token).ConfigureAwait(false);
+
+                    while (!token.IsCancellationRequested)
+                    {
+                        var repository = _libraryRepository;
+                        if (repository != null && _createConnection != null)
+                        {
+                            try
+                            {
+                                using (var db = CreateWritableConnection(repository))
+                                {
+                                    if (db != null)
+                                    {
+                                        db.Execute("PRAGMA busy_timeout=5000");
+                                        EnsureExtensionLoadedOnConnection(db);
+                                        FindAndEnqueueMissingFtsItems(db);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Plugin.Instance.Logger.Warn(
+                                    $"EnhanceChineseSearch - FTS catch-up scan failed: {ex.Message}");
+                            }
+                        }
+
+                        await Task.Delay(TimeSpan.FromMinutes(15), token).ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException) { }
+            });
+        }
+
+        internal static void StopCatchUpLoop()
+        {
+            _catchUpCts?.Cancel();
+            _catchUpCts = null;
+        }
+
+        internal static bool ScheduleRestoreFtsIndex()
+        {
+            if (!string.Equals(CurrentTokenizerName, "simple", StringComparison.Ordinal))
+                return true;
+
+            if (_libraryRepository == null || _createConnection == null)
+                return false;
+
+            if (Interlocked.CompareExchange(ref _restoreFtsScheduled, 1, 0) != 0)
+                return true;
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    StopCatchUpLoop();
+                    _enrichedIndexActive = false;
+
+                    using (var db = CreateWritableConnection(_libraryRepository))
+                    {
+                        if (db == null)
+                        {
+                            Plugin.Instance.Logger.Warn("EnhanceChineseSearch - Restore skipped: writable library db connection unavailable");
+                            return;
+                        }
+
+                        db.Execute("PRAGMA busy_timeout=5000");
+                        EnsureExtensionLoadedOnConnection(db);
+
+                        var ftsTableName = AppVer >= Ver4830 ? "fts_search9" : "fts_search8";
+                        if (RebuildFts(db, ftsTableName, "unicode61 remove_diacritics 2"))
+                        {
+                            CurrentTokenizerName = "unicode61 remove_diacritics 2";
+                            _ftsTableName = ftsTableName;
+                            Plugin.Instance.Logger.Info("EnhanceChineseSearch - Restore Success");
+                            ResetOptions();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Instance.Logger.Warn($"EnhanceChineseSearch - Restore failed: {ex.Message}");
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _restoreFtsScheduled, 0);
+                }
+            });
+
+            return true;
+        }
+
+        // 查询 MediaItems 中不在 fts 表里的条目（服务器关闭期间外部工具入库的内容），入队增量刷新。
+        private static void FindAndEnqueueMissingFtsItems(IDatabaseConnection db)
+        {
+            var ftsTableName = _ftsTableName;
+            if (string.IsNullOrEmpty(ftsTableName)) return;
+
+            var query = $@"SELECT mi.Id FROM MediaItems mi
+                           WHERE mi.Name IS NOT NULL
+                             AND NOT EXISTS (SELECT 1 FROM {ftsTableName} WHERE rowid = mi.Id)
+                           LIMIT 10000";
+
+            var count = 0;
+            try
+            {
+                using (var stmt = db.PrepareStatement(query))
+                {
+                    while (stmt.MoveNext())
+                    {
+                        var idStr = stmt.Current.GetString(0);
+                        if (long.TryParse(idStr, out var id))
+                        {
+                            if (_pendingFtsRefresh.TryAdd(id, 0))
+                                _pendingFtsRefreshOrder.Push(id);
+                            count++;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Instance.Logger.Warn(
+                    $"EnhanceChineseSearch - FindAndEnqueueMissingFtsItems failed: {ex.Message}");
+                return;
+            }
+
+            if (count > 0)
+            {
+                Plugin.Instance.Logger.Info(
+                    $"EnhanceChineseSearch - Startup catch-up: {count} items missing from FTS, queued for incremental refresh");
+                SchedulePendingFtsRefresh();
+            }
+            else
+            {
+                Plugin.Instance.Logger.Info(
+                    "EnhanceChineseSearch - Startup catch-up: all items present in FTS index");
+            }
         }
 
         private static void DrainPendingFtsRefreshWithNewConnection()

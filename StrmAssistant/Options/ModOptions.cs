@@ -61,10 +61,7 @@ namespace StrmAssistant.Options
             SuppressSearchSuggestions,
 
             [DescriptionL("SearchTuningOption_DigitsAsTmdbId_DigitsAsTmdbId", typeof(Resources))]
-            DigitsAsTmdbId,
-
-            [DescriptionL("SearchTuningOption_SkipStartupFtsRebuild_SkipStartupFtsRebuild", typeof(Resources))]
-            SkipStartupFtsRebuild
+            DigitsAsTmdbId
         }
 
         [Browsable(false)]
