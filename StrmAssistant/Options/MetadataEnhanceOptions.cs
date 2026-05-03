@@ -77,6 +77,12 @@ namespace StrmAssistant.Options
         [Required]
         public bool MovieDbEpisodeGroup { get; set; } = false;
 
+        [DisplayNameL("MetadataEnhanceOptions_OptimizeMovieDbEpisodeScraping_Optimize_MovieDb_Episode_Scraping", typeof(Resources))]
+        [DescriptionL("MetadataEnhanceOptions_OptimizeMovieDbEpisodeScraping_Fetch_episode_metadata_by_season_to_reduce_TMDB_requests__Default_is_OFF_", typeof(Resources))]
+        [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
+        [Required]
+        public bool OptimizeMovieDbEpisodeScraping { get; set; } = false;
+
         [DisplayNameL("MetadataEnhanceOptions_LocalEpisodeGroup_Local_Episode_Group", typeof(Resources))]
         [DescriptionL("MetadataEnhanceOptions_LocalEpisodeGroup_Store_or_load_episode_group_info_to_from_JSON_file__Default_is_OFF_", typeof(Resources))]
         [VisibleCondition(nameof(MovieDbEpisodeGroup), SimpleCondition.IsTrue)]

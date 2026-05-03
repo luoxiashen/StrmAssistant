@@ -1341,6 +1341,25 @@ namespace StrmAssistant.Properties {
                         "g_for_TV_shows__Default_is_OFF_", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Optimize MovieDb Episode Scraping.
+        /// </summary>
+        public static string MetadataEnhanceOptions_OptimizeMovieDbEpisodeScraping_Optimize_MovieDb_Episode_Scraping {
+            get {
+                return ResourceManager.GetString("MetadataEnhanceOptions_OptimizeMovieDbEpisodeScraping_Optimize_MovieDb_Episode_Scraping", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Fetch episode metadata by season to reduce TMDB requests. Default is OFF..
+        /// </summary>
+        public static string MetadataEnhanceOptions_OptimizeMovieDbEpisodeScraping_Fetch_episode_metadata_by_season_to_reduce_TMDB_requests__Default_is_OFF_ {
+            get {
+                return ResourceManager.GetString("MetadataEnhanceOptions_OptimizeMovieDbEpisodeScraping_Fetch_episode_metadata_by" +
+                        "_season_to_reduce_TMDB_requests__Default_is_OFF_", resourceCulture);
+            }
+        }
         
         /// <summary>
         ///   Looks up a localized string similar to Customize MovieDb Fallback Language.

@@ -35,6 +35,7 @@ namespace StrmAssistant.Mod
         public static EnhanceMissingEpisodes EnhanceMissingEpisodes;
         public static ChapterChangeTracker ChapterChangeTracker;
         public static MovieDbEpisodeGroup MovieDbEpisodeGroup;
+        public static OptimizeMovieDbEpisodeScraping OptimizeMovieDbEpisodeScraping;
         public static NoBoxsetsAutoCreation NoBoxsetsAutoCreation;
         public static EnhanceNotificationSystem EnhanceNotificationSystem;
         public static EnableDeepDelete EnableDeepDelete;
@@ -72,6 +73,7 @@ namespace StrmAssistant.Mod
             EnableImageCapture = new EnableImageCapture();
             EnhanceChineseSearch = new EnhanceChineseSearch();
             MovieDbEpisodeGroup = new MovieDbEpisodeGroup();
+            OptimizeMovieDbEpisodeScraping = new OptimizeMovieDbEpisodeScraping();
             MergeMultiVersion = new MergeMultiVersion();
             ExclusiveExtract = new ExclusiveExtract();
             ChineseMovieDb = new ChineseMovieDb();
@@ -138,7 +140,8 @@ namespace StrmAssistant.Mod
                 typeof(ChineseMovieDb),
                 typeof(EnhanceMovieDbPerson),
                 typeof(EnhanceNfoMetadata),
-                typeof(MovieDbEpisodeGroup)
+                typeof(MovieDbEpisodeGroup),
+                typeof(OptimizeMovieDbEpisodeScraping)
             };
             
             // 核心功能补丁（这些失败会影响整体状态）

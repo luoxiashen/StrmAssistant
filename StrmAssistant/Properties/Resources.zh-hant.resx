@@ -410,6 +410,12 @@
   <data name="MetadataEnhanceOptions_MovieDbEpisodeGroup_Support_MovieDb_episode_group_scrapping_for_TV_shows__Default_is_OFF_" xml:space="preserve">
     <value>以指定的劇集組刮削劇集，支援外部來源，預設為關閉。</value>
   </data>
+  <data name="MetadataEnhanceOptions_OptimizeMovieDbEpisodeScraping_Optimize_MovieDb_Episode_Scraping" xml:space="preserve">
+    <value>最佳化 MovieDb 單集刮削</value>
+  </data>
+  <data name="MetadataEnhanceOptions_OptimizeMovieDbEpisodeScraping_Fetch_episode_metadata_by_season_to_reduce_TMDB_requests__Default_is_OFF_" xml:space="preserve">
+    <value>按季取得單集元資料以減少 TMDB 請求，預設為關閉。</value>
+  </data>
   <data name="ExclusiveControl_IgnoreFileChange_IgnoreFileChange" xml:space="preserve">
     <value>忽略文件變更</value>
   </data>
