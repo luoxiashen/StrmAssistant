@@ -9,7 +9,7 @@
 3. Playback behavior-based intro and credits detection
 4. Independent external subtitle scan
 
-## Latest Optimizations (v2.2.0)
+## Latest Optimizations (v2.3.0)
 
 ✅ **Complete Architecture Refactoring**
 - New `EmbyVersionAdapter` for intelligent version detection and adaptation
@@ -45,7 +45,7 @@
 
 ## Version Info
 
-- **Plugin Version**: 2.2.0.0
+- **Plugin Version**: 2.3.0.0
 - **Minimum Emby Version**: 4.8.0.0
 - **Recommended Emby Version**: 4.9.1.90 or higher
 - **Tested On**: 4.9.1.90
