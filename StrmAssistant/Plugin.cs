@@ -35,6 +35,7 @@ using StrmAssistant.Properties;
 using StrmAssistant.ScheduledTask;
 using StrmAssistant.Web.Helper;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -42,6 +43,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using static StrmAssistant.Options.ExperienceEnhanceOptions;
 using static StrmAssistant.Options.GeneralOptions;
 using static StrmAssistant.Options.MediaInfoExtractOptions;
@@ -384,80 +387,150 @@ namespace StrmAssistant
             }
         }
 
+        // 扫库期间的串行恢复队列：避免每个 ItemAdded 并发触发 SQLite 写竞争，
+        // 同时让整个扫库会话复用同一个 DirectoryService 缓存（目录枚举/文件 stat 命中）。
+        private readonly ConcurrentQueue<BaseItem> _scanRestoreQueue = new ConcurrentQueue<BaseItem>();
+        private readonly object _scanRestoreLock = new object();
+        private Task _scanRestoreWorker;
+        private DirectoryService _scanDirectoryService;
+
         private async void OnItemAdded(object sender, ItemChangeEventArgs e)
         {
             try
             {
-                var deserializeResult = false;
-
-                if (e.Item is Video && MediaInfoExtractStore.GetOptions().PersistMediaInfoMode !=
-                    PersistMediaInfoOption.None.ToString())
+                if (_libraryManager.IsScanRunning)
                 {
-                    deserializeResult = LibraryApi.HasMediaInfo(e.Item);
-
-                    var directoryService = new DirectoryService(Logger, _fileSystem);
-
-                    if (!deserializeResult)
-                    {
-                        deserializeResult = await MediaInfoApi.DeserializeMediaInfo(e.Item, directoryService,
-                            "OnItemAdded Restore", true).ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        _ = MediaInfoApi.SerializeMediaInfo(e.Item.InternalId, directoryService, true,
-                            "OnItemAdded Overwrite").ConfigureAwait(false);
-                    }
+                    _scanRestoreQueue.Enqueue(e.Item);
+                    EnsureScanRestoreWorker();
+                    return;
                 }
 
-                if ((e.Item is Video || e.Item is Audio) && MainOptionsStore.PluginOptions.GeneralOptions.CatchupMode)
-                {
-                    if (IntroSkipStore.IntroSkipOptions.UnlockIntroSkip &&
-                        IsCatchupTaskSelected(CatchupTask.Fingerprint) &&
-                        e.Item is Episode && FingerprintApi.IsLibraryInScope(e.Item) &&
-                        (!deserializeResult || FingerprintApi.IsExtractNeeded(e.Item)))
-                    {
-                        QueueManager.FingerprintItemQueue.Enqueue(e.Item);
-                    }
-                    else
-                    {
-                        if (IsCatchupTaskSelected(CatchupTask.MediaInfo) && !deserializeResult)
-                        {
-                            QueueManager.MediaInfoExtractItemQueue.Enqueue(e.Item);
-                        }
-
-                        if (IsCatchupTaskSelected(CatchupTask.IntroSkip) &&
-                            e.Item is Episode && PlaySessionMonitor.IsLibraryInScope(e.Item))
-                        {
-                            if (!deserializeResult)
-                            {
-                                QueueManager.MediaInfoExtractItemQueue.Enqueue(e.Item);
-                            }
-                            else if (e.Item is Episode episode && ChapterApi.SeasonHasIntroCredits(episode))
-                            {
-                                QueueManager.IntroSkipItemQueue.Enqueue(episode);
-                            }
-                        }
-                    }
-
-                    if (IsCatchupTaskSelected(CatchupTask.EpisodeRefresh) && e.Item is Episode ep &&
-                        LibraryApi.IsPremiereDateInScope(ep, DateTimeOffset.UtcNow.AddDays(-90), false))
-                    {
-                        QueueManager.EpisodeRefreshItemQueue.Enqueue(ep);
-                    }
-                }
-
-                if (e.Item is Movie || e.Item is Series || e.Item is Episode)
-                {
-                    NotificationApi.FavoritesUpdateSendNotification(e.Item);
-                }
-
-                EnqueueChineseSearchRefresh(e.Item);
+                await ProcessItemAddedAsync(e.Item, null).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 Logger.Debug(ex.Message);
                 Logger.Debug(ex.StackTrace);
             }
+        }
+
+        private void EnsureScanRestoreWorker()
+        {
+            if (_scanRestoreWorker != null && !_scanRestoreWorker.IsCompleted) return;
+
+            lock (_scanRestoreLock)
+            {
+                if (_scanRestoreWorker != null && !_scanRestoreWorker.IsCompleted) return;
+
+                _scanDirectoryService = new DirectoryService(Logger, _fileSystem);
+                _scanRestoreWorker = Task.Run(ScanRestoreWorkerLoopAsync);
+            }
+        }
+
+        private async Task ScanRestoreWorkerLoopAsync()
+        {
+            try
+            {
+                while (true)
+                {
+                    while (_scanRestoreQueue.TryDequeue(out var item))
+                    {
+                        try
+                        {
+                            await ProcessItemAddedAsync(item, _scanDirectoryService).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Debug("ScanRestore item failed: " + ex.Message);
+                            Logger.Debug(ex.StackTrace);
+                        }
+                    }
+
+                    if (!_libraryManager.IsScanRunning && _scanRestoreQueue.IsEmpty)
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(200).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                lock (_scanRestoreLock)
+                {
+                    _scanDirectoryService = null;
+                    _scanRestoreWorker = null;
+                }
+            }
+        }
+
+        private async Task ProcessItemAddedAsync(BaseItem item, IDirectoryService sharedDirectoryService)
+        {
+            var deserializeResult = false;
+
+            if (item is Video && MediaInfoExtractStore.GetOptions().PersistMediaInfoMode !=
+                PersistMediaInfoOption.None.ToString())
+            {
+                deserializeResult = LibraryApi.HasMediaInfo(item);
+
+                var directoryService = sharedDirectoryService ?? new DirectoryService(Logger, _fileSystem);
+
+                if (!deserializeResult)
+                {
+                    // 已经在上面调用过 HasMediaInfo，传 skipHasMediaInfoCheck=true 省掉重复的 DB 查询
+                    deserializeResult = await MediaInfoApi.DeserializeMediaInfo(item, directoryService,
+                        "OnItemAdded Restore", true, true).ConfigureAwait(false);
+                }
+                else
+                {
+                    _ = MediaInfoApi.SerializeMediaInfo(item.InternalId, directoryService, true,
+                        "OnItemAdded Overwrite").ConfigureAwait(false);
+                }
+            }
+
+            if ((item is Video || item is Audio) && MainOptionsStore.PluginOptions.GeneralOptions.CatchupMode)
+            {
+                if (IntroSkipStore.IntroSkipOptions.UnlockIntroSkip &&
+                    IsCatchupTaskSelected(CatchupTask.Fingerprint) &&
+                    item is Episode && FingerprintApi.IsLibraryInScope(item) &&
+                    (!deserializeResult || FingerprintApi.IsExtractNeeded(item)))
+                {
+                    QueueManager.FingerprintItemQueue.Enqueue(item);
+                }
+                else
+                {
+                    if (IsCatchupTaskSelected(CatchupTask.MediaInfo) && !deserializeResult)
+                    {
+                        QueueManager.MediaInfoExtractItemQueue.Enqueue(item);
+                    }
+
+                    if (IsCatchupTaskSelected(CatchupTask.IntroSkip) &&
+                        item is Episode && PlaySessionMonitor.IsLibraryInScope(item))
+                    {
+                        if (!deserializeResult)
+                        {
+                            QueueManager.MediaInfoExtractItemQueue.Enqueue(item);
+                        }
+                        else if (item is Episode episode && ChapterApi.SeasonHasIntroCredits(episode))
+                        {
+                            QueueManager.IntroSkipItemQueue.Enqueue(episode);
+                        }
+                    }
+                }
+
+                if (IsCatchupTaskSelected(CatchupTask.EpisodeRefresh) && item is Episode ep &&
+                    LibraryApi.IsPremiereDateInScope(ep, DateTimeOffset.UtcNow.AddDays(-90), false))
+                {
+                    QueueManager.EpisodeRefreshItemQueue.Enqueue(ep);
+                }
+            }
+
+            if (item is Movie || item is Series || item is Episode)
+            {
+                NotificationApi.FavoritesUpdateSendNotification(item);
+            }
+
+            EnqueueChineseSearchRefresh(item);
         }
 
         private void OnPlaybackStopped(object sender, PlaybackProgressEventArgs e)

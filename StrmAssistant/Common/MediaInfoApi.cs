@@ -461,12 +461,28 @@ namespace StrmAssistant.Common
             return await SerializeMediaInfo(workItem, ds, overwrite, source).ConfigureAwait(false);
         }
 
-        public async Task<bool> DeserializeMediaInfo(BaseItem item, IDirectoryService directoryService, string source,
+        public Task<bool> DeserializeMediaInfo(BaseItem item, IDirectoryService directoryService, string source,
             bool ignoreFileChange)
         {
-            var workItem = _libraryManager.GetItemById(item.InternalId);
+            return DeserializeMediaInfo(item, directoryService, source, ignoreFileChange, false);
+        }
 
-            if (Plugin.LibraryApi.HasMediaInfo(workItem)) return true;
+        public async Task<bool> DeserializeMediaInfo(BaseItem item, IDirectoryService directoryService, string source,
+            bool ignoreFileChange, bool skipHasMediaInfoCheck)
+        {
+            // 调用方若已确认过 HasMediaInfo==false（例如来自 OnItemAdded），可传入 skipHasMediaInfoCheck=true，
+            // 以省掉这里的 GetItemById + GetMediaStreams 两次 DB 往返；扫库高频场景下显著降低 SQLite 压力。
+            BaseItem workItem;
+            if (skipHasMediaInfoCheck)
+            {
+                workItem = item;
+            }
+            else
+            {
+                workItem = _libraryManager.GetItemById(item.InternalId);
+
+                if (Plugin.LibraryApi.HasMediaInfo(workItem)) return true;
+            }
 
             var mediaInfoJsonPath = GetMediaInfoJsonPath(item);
             var file = directoryService.GetFile(mediaInfoJsonPath);
