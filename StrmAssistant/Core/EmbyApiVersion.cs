@@ -22,6 +22,8 @@ namespace StrmAssistant.Core
         /// </summary>
         V4_8_3 = 4830,
         
+        V4_8_10 = 4880,
+        
         /// <summary>
         /// 4.9.0.x 早期版本
         /// </summary>

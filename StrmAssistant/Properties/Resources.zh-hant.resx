@@ -416,6 +416,18 @@
   <data name="MetadataEnhanceOptions_OptimizeMovieDbEpisodeScraping_Fetch_episode_metadata_by_season_to_reduce_TMDB_requests__Default_is_OFF_" xml:space="preserve">
     <value>按季取得單集元資料以減少 TMDB 請求，預設為關閉。</value>
   </data>
+  <data name="MetadataEnhanceOptions_DisableMovieDbEpisodeScrapingFallback_Disable_Per_Episode_Fallback" xml:space="preserve">
+    <value>停用逐集兜底請求</value>
+  </data>
+  <data name="MetadataEnhanceOptions_DisableMovieDbEpisodeScrapingFallback_Skip_per_episode_requests_when_season_data_is_empty__Default_is_OFF_" xml:space="preserve">
+    <value>當按季取得成功但該集資料缺失或為空時，略過逐集兜底請求，預設為關閉。</value>
+  </data>
+  <data name="MetadataEnhanceOptions_DisableEpisodeImageScraping_Disable_Episode_Image_Scraping" xml:space="preserve">
+    <value>停用單集圖片刮削</value>
+  </data>
+  <data name="MetadataEnhanceOptions_DisableEpisodeImageScraping_Skip_all_episode_image_requests_to_speed_up_library_import__Default_is_OFF_" xml:space="preserve">
+    <value>略過所有單集圖片請求以加快入庫速度，預設為關閉。</value>
+  </data>
   <data name="ExclusiveControl_IgnoreFileChange_IgnoreFileChange" xml:space="preserve">
     <value>忽略文件變更</value>
   </data>

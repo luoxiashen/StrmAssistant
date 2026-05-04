@@ -110,9 +110,10 @@ namespace StrmAssistant.Options.Store
                     }
                 }
 
-                if (changedProperties.Contains(nameof(MetadataEnhanceOptions.OptimizeMovieDbEpisodeScraping)))
+                if (changedProperties.Contains(nameof(MetadataEnhanceOptions.OptimizeMovieDbEpisodeScraping)) ||
+                    changedProperties.Contains(nameof(MetadataEnhanceOptions.DisableEpisodeImageScraping)))
                 {
-                    if (options.OptimizeMovieDbEpisodeScraping)
+                    if (options.OptimizeMovieDbEpisodeScraping || options.DisableEpisodeImageScraping)
                     {
                         PatchManager.OptimizeMovieDbEpisodeScraping.Patch();
                     }

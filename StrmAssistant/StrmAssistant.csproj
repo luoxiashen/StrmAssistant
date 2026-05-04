@@ -54,9 +54,9 @@
 
     <PackageReference Include="Lib.Harmony" Version="2.3.6" />
 
-    <PackageReference Include="mediabrowser.server.core" Version="4.9.1.90">
+    <PackageReference Include="mediabrowser.server.core" Version="4.8.10.0">
 
-      <!-- 当前支持4.9.1.90及更高版本 -->
+      <!-- 当前支持4.8.10.0及更高版本 -->
 
     </PackageReference>
 

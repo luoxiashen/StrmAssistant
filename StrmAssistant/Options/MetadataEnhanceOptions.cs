@@ -83,6 +83,19 @@ namespace StrmAssistant.Options
         [Required]
         public bool OptimizeMovieDbEpisodeScraping { get; set; } = false;
 
+        [DisplayNameL("MetadataEnhanceOptions_DisableMovieDbEpisodeScrapingFallback_Disable_Per_Episode_Fallback", typeof(Resources))]
+        [DescriptionL("MetadataEnhanceOptions_DisableMovieDbEpisodeScrapingFallback_Skip_per_episode_requests_when_season_data_is_empty__Default_is_OFF_", typeof(Resources))]
+        [VisibleCondition(nameof(OptimizeMovieDbEpisodeScraping), SimpleCondition.IsTrue)]
+        [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
+        [Required]
+        public bool DisableMovieDbEpisodeScrapingFallback { get; set; } = false;
+
+        [DisplayNameL("MetadataEnhanceOptions_DisableEpisodeImageScraping_Disable_Episode_Image_Scraping", typeof(Resources))]
+        [DescriptionL("MetadataEnhanceOptions_DisableEpisodeImageScraping_Skip_all_episode_image_requests_to_speed_up_library_import__Default_is_OFF_", typeof(Resources))]
+        [EnabledCondition(nameof(IsMovieDbPluginLoaded), SimpleCondition.IsTrue)]
+        [Required]
+        public bool DisableEpisodeImageScraping { get; set; } = false;
+
         [DisplayNameL("MetadataEnhanceOptions_LocalEpisodeGroup_Local_Episode_Group", typeof(Resources))]
         [DescriptionL("MetadataEnhanceOptions_LocalEpisodeGroup_Store_or_load_episode_group_info_to_from_JSON_file__Default_is_OFF_", typeof(Resources))]
         [VisibleCondition(nameof(MovieDbEpisodeGroup), SimpleCondition.IsTrue)]

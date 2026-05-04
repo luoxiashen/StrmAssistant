@@ -83,6 +83,8 @@ namespace StrmAssistant.Core
                 return EmbyApiVersion.V4_9_1;
             if (version >= new Version("4.9.0.0"))
                 return EmbyApiVersion.V4_9_0;
+            if (version >= new Version("4.8.10.0"))
+                return EmbyApiVersion.V4_8_10;
             if (version >= new Version("4.8.3.0"))
                 return EmbyApiVersion.V4_8_3;
             if (version >= new Version("4.8.0.0"))

@@ -27,7 +27,8 @@ namespace StrmAssistant.Mod
         {
             Initialize();
 
-            if (Plugin.Instance.MetadataEnhanceStore.GetOptions().OptimizeMovieDbEpisodeScraping)
+            var options = Plugin.Instance.MetadataEnhanceStore.GetOptions();
+            if (options.OptimizeMovieDbEpisodeScraping || options.DisableEpisodeImageScraping)
             {
                 Patch();
             }
@@ -69,29 +70,82 @@ namespace StrmAssistant.Mod
         private static bool EpisodeGetMetadataPrefix(RemoteMetadataFetchOptions<EpisodeInfo> options,
             CancellationToken cancellationToken, ref Task<MetadataResult<Episode>> __result)
         {
-            var result = Task.Run(() => GetEpisodeMetadataFromSeasonAsync(options, cancellationToken), cancellationToken)
+            if (!Plugin.Instance.MetadataEnhanceStore.GetOptions().OptimizeMovieDbEpisodeScraping)
+            {
+                return true;
+            }
+
+            var outcome = Task.Run(() => GetEpisodeMetadataFromSeasonAsync(options, cancellationToken), cancellationToken)
                 .Result;
 
-            if (result is null) return true;
+            if (outcome.Result != null)
+            {
+                __result = Task.FromResult(outcome.Result);
+                return false;
+            }
 
-            __result = Task.FromResult(result);
-            return false;
+            if (outcome.SuppressFallback)
+            {
+                __result = Task.FromResult(new MetadataResult<Episode> { HasMetadata = false });
+                return false;
+            }
+
+            return true;
         }
 
         [HarmonyPrefix]
         private static bool EpisodeGetImagesPrefix(RemoteImageFetchOptions options,
             CancellationToken cancellationToken, ref Task<IEnumerable<RemoteImageInfo>> __result)
         {
-            var result = Task.Run(() => GetEpisodeImagesFromSeasonAsync(options, cancellationToken), cancellationToken)
+            var enhanceOptions = Plugin.Instance.MetadataEnhanceStore.GetOptions();
+
+            // 一键忽略所有集图片：直接短路，跳过按季和逐集请求
+            if (enhanceOptions.DisableEpisodeImageScraping)
+            {
+                __result = Task.FromResult<IEnumerable<RemoteImageInfo>>(Array.Empty<RemoteImageInfo>());
+                return false;
+            }
+
+            if (!enhanceOptions.OptimizeMovieDbEpisodeScraping)
+            {
+                return true;
+            }
+
+            var outcome = Task.Run(() => GetEpisodeImagesFromSeasonAsync(options, cancellationToken), cancellationToken)
                 .Result;
 
-            if (result is null) return true;
+            if (outcome.Result != null)
+            {
+                __result = Task.FromResult(outcome.Result);
+                return false;
+            }
 
-            __result = Task.FromResult(result);
-            return false;
+            if (outcome.SuppressFallback)
+            {
+                __result = Task.FromResult<IEnumerable<RemoteImageInfo>>(Array.Empty<RemoteImageInfo>());
+                return false;
+            }
+
+            return true;
         }
 
-        private static async Task<MetadataResult<Episode>> GetEpisodeMetadataFromSeasonAsync(
+        private readonly struct PrefixOutcome<T> where T : class
+        {
+            public PrefixOutcome(T result, bool suppressFallback)
+            {
+                Result = result;
+                SuppressFallback = suppressFallback;
+            }
+
+            public T Result { get; }
+            public bool SuppressFallback { get; }
+
+            public static PrefixOutcome<T> Passthrough => new PrefixOutcome<T>(null, false);
+            public static PrefixOutcome<T> Suppress => new PrefixOutcome<T>(null, true);
+            public static PrefixOutcome<T> From(T value) => new PrefixOutcome<T>(value, false);
+        }
+
+        private static async Task<PrefixOutcome<MetadataResult<Episode>>> GetEpisodeMetadataFromSeasonAsync(
             RemoteMetadataFetchOptions<EpisodeInfo> options, CancellationToken cancellationToken)
         {
             var episodeInfo = options?.SearchInfo;
@@ -99,14 +153,14 @@ namespace StrmAssistant.Mod
             if (episodeInfo is null || !episodeInfo.ParentIndexNumber.HasValue ||
                 !episodeInfo.IndexNumber.HasValue)
             {
-                return null;
+                return PrefixOutcome<MetadataResult<Episode>>.Passthrough;
             }
 
             if (episodeInfo.SeriesProviderIds is null ||
                 !episodeInfo.SeriesProviderIds.TryGetValue(MetadataProviders.Tmdb.ToString(), out var tmdbId) ||
                 string.IsNullOrEmpty(tmdbId))
             {
-                return null;
+                return PrefixOutcome<MetadataResult<Episode>>.Passthrough;
             }
 
             var seasonInfo = await FetchSeasonInfoAsync(tmdbId, episodeInfo.ParentIndexNumber.Value,
@@ -116,7 +170,17 @@ namespace StrmAssistant.Mod
             var episodeResponse = seasonInfo?.episodes?
                 .FirstOrDefault(e => e.episode_number == episodeInfo.IndexNumber.Value);
 
-            if (episodeResponse is null) return null;
+            if (episodeResponse is null)
+            {
+                // 季数据已成功获取但未匹配到该集：按用户开关决定是否回退到逐集请求
+                if (seasonInfo != null &&
+                    Plugin.Instance.MetadataEnhanceStore.GetOptions().DisableMovieDbEpisodeScrapingFallback)
+                {
+                    return PrefixOutcome<MetadataResult<Episode>>.Suppress;
+                }
+
+                return PrefixOutcome<MetadataResult<Episode>>.Passthrough;
+            }
 
             var result = new MetadataResult<Episode>
             {
@@ -138,20 +202,20 @@ namespace StrmAssistant.Mod
                     episodeResponse.id.ToString(CultureInfo.InvariantCulture));
             }
 
-            return result;
+            return PrefixOutcome<MetadataResult<Episode>>.From(result);
         }
 
-        private static async Task<IEnumerable<RemoteImageInfo>> GetEpisodeImagesFromSeasonAsync(
+        private static async Task<PrefixOutcome<IEnumerable<RemoteImageInfo>>> GetEpisodeImagesFromSeasonAsync(
             RemoteImageFetchOptions options, CancellationToken cancellationToken)
         {
             if (!(options?.Item is Episode episode) || !episode.ParentIndexNumber.HasValue ||
                 !episode.IndexNumber.HasValue || episode.Series is null)
             {
-                return null;
+                return PrefixOutcome<IEnumerable<RemoteImageInfo>>.Passthrough;
             }
 
             var tmdbId = episode.Series.GetProviderId(MetadataProviders.Tmdb);
-            if (string.IsNullOrEmpty(tmdbId)) return null;
+            if (string.IsNullOrEmpty(tmdbId)) return PrefixOutcome<IEnumerable<RemoteImageInfo>>.Passthrough;
 
             var seasonInfo = await FetchSeasonInfoAsync(tmdbId, episode.ParentIndexNumber.Value,
                     episode.GetPreferredMetadataLanguage(), cancellationToken)
@@ -160,12 +224,22 @@ namespace StrmAssistant.Mod
             var episodeResponse = seasonInfo?.episodes?
                 .FirstOrDefault(e => e.episode_number == episode.IndexNumber.Value);
 
-            if (string.IsNullOrEmpty(episodeResponse?.still_path)) return null;
+            if (string.IsNullOrEmpty(episodeResponse?.still_path))
+            {
+                // 季数据已成功获取但未匹配到该集图片：按用户开关决定是否回退到逐集请求
+                if (seasonInfo != null &&
+                    Plugin.Instance.MetadataEnhanceStore.GetOptions().DisableMovieDbEpisodeScrapingFallback)
+                {
+                    return PrefixOutcome<IEnumerable<RemoteImageInfo>>.Suppress;
+                }
+
+                return PrefixOutcome<IEnumerable<RemoteImageInfo>>.Passthrough;
+            }
 
             var stillPath = episodeResponse.still_path.TrimStart('/');
             var imageUrl = $"{AltMovieDbConfig.CurrentMovieDbImageUrl}/t/p/original/{stillPath}";
 
-            return new[]
+            return PrefixOutcome<IEnumerable<RemoteImageInfo>>.From(new[]
             {
                 new RemoteImageInfo
                 {
@@ -173,7 +247,7 @@ namespace StrmAssistant.Mod
                     Url = imageUrl,
                     Type = ImageType.Primary
                 }
-            };
+            });
         }
 
         private static async Task<SeasonResponseInfo> FetchSeasonInfoAsync(string tmdbId, int seasonNumber,

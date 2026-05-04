@@ -33,12 +33,12 @@ namespace StrmAssistant.Common
 
         public bool HasIntro(BaseItem item)
         {
-            return _itemRepository.GetChapters(item, CancellationToken.None).Any(c => c.MarkerType == MarkerType.IntroStart);
+            return _itemRepository.GetChapters(item.InternalId, null).Any(c => c.MarkerType == MarkerType.IntroStart);
         }
 
         public long? GetIntroStart(BaseItem item)
         {
-            var introStart = _itemRepository.GetChapters(item, CancellationToken.None)
+            var introStart = _itemRepository.GetChapters(item.InternalId, null)
                 .FirstOrDefault(c => c.MarkerType == MarkerType.IntroStart);
 
             return introStart?.StartPositionTicks;
@@ -46,7 +46,7 @@ namespace StrmAssistant.Common
 
         public long? GetIntroEnd(BaseItem item)
         {
-            var introEnd = _itemRepository.GetChapters(item, CancellationToken.None)
+            var introEnd = _itemRepository.GetChapters(item.InternalId, null)
                 .FirstOrDefault(c => c.MarkerType == MarkerType.IntroEnd);
 
             return introEnd?.StartPositionTicks;
@@ -54,12 +54,12 @@ namespace StrmAssistant.Common
 
         public bool HasCredits(BaseItem item)
         {
-            return _itemRepository.GetChapters(item, CancellationToken.None).Any(c => c.MarkerType == MarkerType.CreditsStart);
+            return _itemRepository.GetChapters(item.InternalId, null).Any(c => c.MarkerType == MarkerType.CreditsStart);
         }
 
         public long? GetCreditsStart(BaseItem item)
         {
-            var creditsStart = _itemRepository.GetChapters(item, CancellationToken.None)
+            var creditsStart = _itemRepository.GetChapters(item.InternalId, null)
                 .FirstOrDefault(c => c.MarkerType == MarkerType.CreditsStart);
 
             return creditsStart?.StartPositionTicks;
