@@ -89,6 +89,8 @@ namespace StrmAssistant
         private readonly ITaskManager _taskManager;
         private readonly ISessionManager _sessionManager;
 
+        internal bool IsLibraryScanRunning => _libraryManager?.IsScanRunning == true;
+
         public Plugin(IApplicationHost applicationHost, IApplicationPaths applicationPaths, ILogManager logManager,
             IFileSystem fileSystem, ILibraryManager libraryManager, ISessionManager sessionManager,
             IItemRepository itemRepository, INotificationManager notificationManager, ILibraryMonitor libraryMonitor,
@@ -331,6 +333,10 @@ namespace StrmAssistant
             if (item == null) return;
 
             EnhanceChineseSearch.EnqueueFtsRefresh(item.InternalId);
+
+            // 扫描期间：Emby 会对每个子项单独触发 ItemAdded/ItemUpdated，递归入队既重复又会在
+            // 大库上执行一次 Recursive=true 的 GetItemList，抢占 library.db。交由子项自己的事件处理即可。
+            if (_libraryManager.IsScanRunning) return;
 
             if (item is Series || item is Season)
             {

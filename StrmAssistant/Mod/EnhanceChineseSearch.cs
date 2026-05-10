@@ -75,6 +75,10 @@ namespace StrmAssistant.Mod
         // 单连接串行化，避免与同连接上的其他语句冲突（CacheIdsFromTextParamsPrefix 在搜索路径上调用）。
         private static readonly object _ftsRefreshLock = new object();
         private const int FtsRefreshMaxRowsPerConnection = 50;
+        // 自适应调度：空闲时 3s，持续有队列或刷新期间拉长间隔，给 Emby 前台查询让路。
+        private const int FtsRefreshIdleDelaySeconds = 3;
+        private const int FtsRefreshBusyDelaySeconds = 15;
+        private const int FtsRefreshScanDelaySeconds = 60;
 
         private static readonly Regex DigitsOnlyRegex = new Regex(@"^\d+$", RegexOptions.Compiled);
         private static readonly Regex ChineseCharRegex = new Regex(@"[\u4E00-\u9FFF]", RegexOptions.Compiled);
@@ -1824,7 +1828,20 @@ namespace StrmAssistant.Mod
             {
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                    // 自适应调度：扫描中/队列积压时拉长间隔，给前台 Emby 查询/写入让路。
+                    int delaySeconds;
+                    if (Plugin.Instance.IsLibraryScanRunning)
+                        delaySeconds = FtsRefreshScanDelaySeconds;
+                    else if (_pendingFtsRefresh.Count >= FtsRefreshMaxRowsPerConnection)
+                        delaySeconds = FtsRefreshBusyDelaySeconds;
+                    else
+                        delaySeconds = FtsRefreshIdleDelaySeconds;
+
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds)).ConfigureAwait(false);
+
+                    // 扫描仍在进行：本轮不处理，让 Emby 独占写连接。下一轮若仍有堆积再来。
+                    if (Plugin.Instance.IsLibraryScanRunning) return;
+
                     DrainPendingFtsRefreshWithNewConnection();
                 }
                 catch (Exception ex)
@@ -1858,7 +1875,8 @@ namespace StrmAssistant.Mod
                     while (!token.IsCancellationRequested)
                     {
                         var repository = _libraryRepository;
-                        if (repository != null && _createConnection != null)
+                        // 扫描期间跳过 catch-up：LIMIT 10000 的 NOT EXISTS 查询在大库上会抢 library.db 资源。
+                        if (repository != null && _createConnection != null && !Plugin.Instance.IsLibraryScanRunning)
                         {
                             try
                             {
@@ -1866,7 +1884,7 @@ namespace StrmAssistant.Mod
                                 {
                                     if (db != null)
                                     {
-                                        db.Execute("PRAGMA busy_timeout=5000");
+                                        db.Execute("PRAGMA busy_timeout=1000");
                                         EnsureExtensionLoadedOnConnection(db);
                                         FindAndEnqueueMissingFtsItems(db);
                                     }
@@ -2000,7 +2018,8 @@ namespace StrmAssistant.Mod
             using (var db = CreateWritableConnection(repository))
             {
                 if (db == null) return;
-                db.Execute("PRAGMA busy_timeout=5000");
+                // 降低 busy_timeout：与 Emby 写连接争锁时快速让步，避免拖住前台查询/刷新。
+                db.Execute("PRAGMA busy_timeout=1000");
                 EnsureExtensionLoadedOnConnection(db);
                 DrainPendingFtsRefresh(db, FtsRefreshMaxRowsPerConnection);
             }
@@ -2143,7 +2162,32 @@ namespace StrmAssistant.Mod
                     $"INSERT INTO {ftsTableName}(RowId, Name, OriginalTitle, SeriesName, Album) VALUES (?,?,?,?,?)";
                 var verifySql = $"SELECT rowid FROM {ftsTableName} WHERE {ftsTableName} MATCH ? AND rowid = ? LIMIT 1";
 
+                // 批量路径用显式事务包住全部写入：1 次 fsync 代替 N 次，
+                // 显著缩短我们持有 library.db 写锁的时间，避免拖慢 Emby 的前台查询与刷新写入。
+                // 单行兜底路径（搜索热路径，maxRows<=1）不启事务，避免与 Emby 当前事务冲突。
+                var useTransaction = maxRows > 1;
+                var transactionStarted = false;
+                if (useTransaction)
+                {
+                    try
+                    {
+                        db.Execute("BEGIN IMMEDIATE");
+                        transactionStarted = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        // 拿不到写锁就本轮放弃，等下次调度再来。
+                        if (Plugin.Instance.DebugMode)
+                            Plugin.Instance.Logger.Debug(
+                                $"EnhanceChineseSearch - BEGIN IMMEDIATE failed, skipping this batch: {ex.Message}");
+                        return;
+                    }
+                }
+
                 var refreshed = 0;
+                var committed = false;
+                try
+                {
                 using (var selectStmt = db.PrepareStatement(selectSql))
                 using (var deleteStmt = db.PrepareStatement(deleteSql))
                 using (var insertStmt = db.PrepareStatement(insertSql))
@@ -2222,9 +2266,37 @@ namespace StrmAssistant.Mod
                     }
                 }
 
+                if (transactionStarted)
+                {
+                    try
+                    {
+                        db.Execute("COMMIT");
+                        committed = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Plugin.Instance.Logger.Warn(
+                            $"EnhanceChineseSearch - COMMIT failed: {ex.Message}");
+                    }
+                }
+
                 if (refreshed > 0)
                     Plugin.Instance.Logger.Info(
                         $"EnhanceChineseSearch - Refreshed {refreshed} fts rows ({ftsTableName})");
+                }
+                finally
+                {
+                    if (transactionStarted && !committed)
+                    {
+                        try { db.Execute("ROLLBACK"); }
+                        catch (Exception rbEx)
+                        {
+                            if (Plugin.Instance.DebugMode)
+                                Plugin.Instance.Logger.Debug(
+                                    $"EnhanceChineseSearch - ROLLBACK failed: {rbEx.Message}");
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
